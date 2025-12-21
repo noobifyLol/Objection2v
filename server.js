@@ -9,15 +9,15 @@ const app = express();
 app.use(cors());
 app.use(express.json());
 
-// Initialize Gemini client using API key from environment variable
-const apiKey = "AIzaSyAtkRw5rb5c185wTJ1vowS3f3QtxP23vKg";
+
+const apiKey = process.env.GEMINI_API_KEY;
 if (!apiKey) {
   console.error("❌ GEMINI_API_KEY not set in .env");
   process.exit(1);
 }
 const genAI = new GoogleGenerativeAI(apiKey);
 
-// Helper to extract text from Gemini response
+
 function extractText(result) {
   try {
     if (result?.response && typeof result.response.text === "function") return result.response.text();

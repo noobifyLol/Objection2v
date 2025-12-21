@@ -1,11 +1,8 @@
-// App.tsx (replace your current file with this)
+
 import React, { useState, useEffect, useCallback } from 'react';
 import { Scale, Clock, Gavel, Sparkles, Wand2, Trophy, Zap, Star, Disc } from 'lucide-react';
 import './App.css';
 import { playSound } from "./sound";
-
-// NOTE: removed GoogleGenerativeAI import and API key from frontend.
-// Backend must expose endpoints at http://localhost:3000/api/generate-prompt and /api/judge-argument
 
 const FALLBACK_CASES = {
   rapid: [
@@ -19,7 +16,7 @@ const FALLBACK_CASES = {
     "Your client, James Rodriguez, is a freelance content creator whose posts about immigration rights were shadowbanned by a major social media platform. The algorithm flagged his content as 'controversial' without human review. Defend his free speech rights and argue for platform accountability in content moderation."
   ]
 };
-
+//testing comment
 const CASE_GENERATION_PROMPT = (currentRound: number, lessonType: string | null) => `Generate a unique debate case scenario for a debate practice program.
 
 Round Information:
@@ -118,7 +115,7 @@ export default function App() {
     };
   }, [started]);
 
-  // ------------ handleSubmitArgument (calls backend) ------------
+
   const handleSubmitArgument = useCallback(async () => {
     new Audio("audio/button_click.ogg").play().catch(err => console.log('Audio play failed:', err));
     setGameState('judging');
@@ -129,7 +126,7 @@ export default function App() {
     }
 
     try {
-      // Call backend judge endpoint (make sure server is running on port 3000)
+
       const resp = await fetch('http://localhost:3000/api/judge-argument', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
