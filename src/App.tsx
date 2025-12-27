@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect, useCallback } from 'react';
 import { Scale, Clock, Gavel, Sparkles, Wand2, Trophy, Zap, Star, Disc } from 'lucide-react';
 import './App.css';
@@ -16,61 +15,41 @@ const FALLBACK_CASES = {
     "Your client, James Rodriguez, is a freelance content creator whose posts about immigration rights were shadowbanned by a major social media platform. The algorithm flagged his content as 'controversial' without human review. Defend his free speech rights and argue for platform accountability in content moderation."
   ]
 };
-//testing comment
-const CASE_GENERATION_PROMPT = (currentRound: number, lessonType: string | null) => `Generate a unique debate case scenario for a debate practice program.
+
+const CASE_GENERATION_PROMPT = (currentRound: number, lessonType: string) => `Generate a unique debate case scenario for a debate practice program.
 
 Round Information:
 - Current Round: ${currentRound} of 3
 - Lesson Type: ${lessonType === 'rapid' ? 'Rapid Rush (2 min per case, MUST be SHORT)' : 'Normal Pace (4 min per case)'}
 
 Rules:
-- Use a **new, distinct client or subject name** that has not appeared in any previous responses.
-- Match the **difficulty** level provided:
+- Use a new, distinct client or subject name that has not appeared previously.
+- Match the difficulty level:
   • Round 1 → moderately challenging issue
   • Round 2 → complex issue with nuance
   • Round 3 → highly difficult systemic issue
-- The scenario can involve individuals from any background, but highlight important stakeholder perspectives.
-- The scenario must be **completely different** from any previously generated cases.
-${lessonType === 'rapid' ? '- **CRITICAL: For Rapid mode, the prompt MUST be between 15-35 words ONLY. Be extremely concise. Just 1-2 sentences max.**' : ''}
+- The scenario must be completely different from previous cases.
+${lessonType === 'rapid' ? 'CRITICAL: For Rapid mode, the prompt MUST be between 15-35 words ONLY.' : ''}
 
 Case Requirements:
-- Start with **"Your client..."** or **"The scenario..."**
-${lessonType === 'rapid' ? '- Write a SHORT scenario in just 1-2 sentences (15-35 words)' : '- Write a compelling scenario in 2-4 sentences'}
-- Clearly describe the core issue and why it matters for debate
-- The scenario must be debate-worthy and realistic
-- Focus on the central conflict or question to debate
+- Start with "Your client..." or "The scenario..."
+- For rapid mode: 1-2 sentences (15-35 words). For normal: 2-4 sentences.
+- Clearly describe the core issue and why it matters.
+- Debate-worthy and realistic.
+Return ONLY the final case description text (no lists or extra formatting).`;
 
-Output:
-Return ONLY the final case description. No explanations, no lists, no extra formatting.`;
+interface ToastContent {
+  type: string;
+  title: string;
+  message: string;
+}
 
-const JUDGE_PROMPT_TEMPLATE = `You are Judge Gemini presiding over a case involving social justice and marginalized communities.
-
-CASE: {CASE}
-
-ROOKIE LAWYER'S DEFENSE ARGUMENT:
-{ARGUMENT}
-
-As a judge committed to equity and justice, evaluate this defense argument carefully.
-
-Consider:
-1. Does the argument show empathy and understanding of marginalized perspectives (if it's about minorities in tech)?
-2. Are there concrete examples or evidence cited?
-3. Is the legal reasoning sound and persuasive (Most Important)?
-4. Does it address systemic issues or just surface-level concerns?
-5. If the prompt and arguenment is not about underrepresented communities or Tech-related just grade how you want to grade it grade it like a debate club agruement. 
-
-Provide your evaluation in this EXACT format:
-
-SCORE: [number from 0-100]
-VERDICT: [In 2-3 sentences, explain your ruling on whether this defense would succeed]
-FEEDBACK: [In 2-3 sentences, give constructive advice on how to strengthen this argument for defending marginalized clients or any other debate topic.]
-
-Be encouraging but honest. This is a learning experience for a rookie lawyer.`;
+type GameState = 'input' | 'playing' | 'judging' | 'results' | 'end';
 
 export default function App() {
   const [fadeClass, setFadeClass] = useState("fade-in");
   const [started, setStarted] = useState(false);
-  const [gameState, setGameState] = useState('input');
+  const [gameState, setGameState] = useState<GameState>('input');
   const [currentRound, setCurrentRound] = useState(1);
   const [prompt, setPrompt] = useState('');
   const [customPrompt, setCustomPrompt] = useState('');
@@ -81,52 +60,33 @@ export default function App() {
   const [scores, setScores] = useState<number[]>([]);
   const [totalScore, setTotalScore] = useState(0);
   const [showConfetti, setShowConfetti] = useState(false);
-  const [toast, setToast] = useState<{ open: boolean; content: { type: string; title: string; message: string } | null }>({ open: false, content: null });
+  const [toast, setToast] = useState<{ open: boolean; content: ToastContent | null }>({ open: false, content: null });
   const [showTutorial, setShowTutorial] = useState(false);
-  const [lessonType, setLessonType] = useState<'normal' | 'rapid' | null>(null);
+  const [lessonType, setLessonType] = useState('normal');
 
   const showToast = (type: string, title: string, message: string, duration = 4000) => {
     setToast({ open: true, content: { type, title, message } });
     setTimeout(() => setToast({ open: false, content: null }), duration);
   };
 
-  const openTutorialModal = () => {
-    setShowTutorial(true);
-  };
-
-  const closeTutorialModal = () => {
-    new Audio("audio/button_click.ogg").play();
-    setShowTutorial(false);
-  };
+  useEffect(() => setFadeClass("fade-in"), []);
 
   useEffect(() => {
-    setFadeClass("fade-in");
-  }, []);
-  
-  useEffect(() => {
-    if (!started) {
-      document.body.style.overflow = "hidden"; 
-    } else {
-      document.body.style.overflow = "auto";     
-    }
-
+    if (!started) document.body.style.overflow = "hidden";
+    else document.body.style.overflow = "auto";
     return () => {
       document.body.style.overflow = "auto";
     };
   }, [started]);
-
 
   const handleSubmitArgument = useCallback(async () => {
     new Audio("audio/button_click.ogg").play().catch(err => console.log('Audio play failed:', err));
     setGameState('judging');
 
     const submittedArgument = argument && argument.trim() ? argument : '[NO ARGUMENT SUBMITTED]';
-    if (!argument.trim()) {
-      showToast('info', 'Auto-submitted', 'Time expired — submitting an empty argument.');
-    }
+    if (!argument.trim()) showToast('info', 'Auto-submitted', 'Time expired — submitting an empty argument.');
 
     try {
-
       const resp = await fetch('http://localhost:3000/api/judge-argument', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -134,15 +94,13 @@ export default function App() {
       });
 
       if (!resp.ok) {
-        // forward backend error to catch block
         const errBody = await resp.json().catch(() => ({}));
-        throw new Error(errBody?.message || `Judge endpoint returned ${resp.status}`);
+        throw new Error((errBody as any)?.message || `Judge endpoint returned ${resp.status}`);
       }
 
       const data = await resp.json();
       const judgeText = (data.verdict || String(data)).trim();
 
-      // parse SCORE / VERDICT / FEEDBACK from the text (same logic you had)
       let verdictText = '';
       let feedback = '';
       let score = 75;
@@ -177,9 +135,6 @@ export default function App() {
 
     } catch (error) {
       console.error('❌ JUDGE ERROR:', error);
-      console.error('❌ Using fallback scoring');
-      
-      // Fallback scoring (your existing logic)
       const argumentLength = submittedArgument.length;
       const hasEvidence = /example|evidence|study|research|data|statistic/i.test(submittedArgument);
       const hasEmpathy = /perspective|impact|affect|feel|experience|harm|benefit/i.test(submittedArgument);
@@ -209,7 +164,6 @@ export default function App() {
     }
   }, [argument, prompt]);
 
-  // --------- timer effect that auto-submits when time runs out ----------
   useEffect(() => {
     if (gameState === 'playing' && timeLeft > 0) {
       const timer = setTimeout(() => setTimeLeft(timeLeft - 1), 1000);
@@ -258,7 +212,6 @@ export default function App() {
     }, 800);
   };
 
-  // ---------- generateAIPrompt now calls backend endpoint /api/generate-prompt ----------
   const generateAIPrompt = async () => {
     new Audio("audio/button_click.ogg").play().catch(err => console.log('Audio play failed:', err));
     setIsGenerating(true);
@@ -266,20 +219,20 @@ export default function App() {
 
     try {
       const timerDuration = lessonType === 'rapid' ? 120 : 240;
+      const fullPrompt = CASE_GENERATION_PROMPT(currentRound, lessonType);
 
       const resp = await fetch('http://localhost:3000/api/generate-prompt', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ currentRound, lessonType })
+        body: JSON.stringify({ prompt: fullPrompt, currentRound, lessonType })
       });
 
       if (!resp.ok) {
         const errBody = await resp.json().catch(() => ({}));
-        throw new Error(errBody?.message || `generate endpoint returned ${resp.status}`);
+        throw new Error((errBody as any)?.message || `generate endpoint returned ${resp.status}`);
       }
 
       const data = await resp.json();
-      // backend returns { prompt: text }
       const generatedPrompt = (data.prompt || '').trim();
 
       if (!generatedPrompt) throw new Error('Empty response from backend');
@@ -294,7 +247,7 @@ export default function App() {
       console.error('❌ CASE GENERATION ERROR:', error);
 
       const caseType = lessonType === 'rapid' ? 'rapid' : 'normal';
-      const fallbackCase = FALLBACK_CASES[caseType][currentRound - 1];
+      const fallbackCase = FALLBACK_CASES[caseType as keyof typeof FALLBACK_CASES][currentRound - 1];
 
       setPrompt(fallbackCase);
       setGameState('playing');
@@ -360,6 +313,14 @@ export default function App() {
     return `${mins}:${secs.toString().padStart(2, '0')}`;
   };
 
+  const openTutorialModal = () => {
+    setShowTutorial(true);
+  };
+
+  const closeTutorialModal = () => {
+    setShowTutorial(false);
+  };
+
   const timerDuration = lessonType === 'rapid' ? 120 : 240;
   const progressPercent = Math.max(0, Math.min(100, Math.round((timeLeft / timerDuration) * 100)));
 
@@ -393,29 +354,29 @@ export default function App() {
               You're a rookie lawyer/ debater defending clients or your position on arguement from marginalized backgrounds.
               Face 3 cases involving digital privacy, algorithmic bias, and social justice or any other debate Problem.
             </p>
-          <div id = "start-buttonwrapper">
-            <button id="start-btn"  onClick={() => {
-    const audio = new Audio("/audio/button_click.mp4");
-    audio.volume = 0.4;
-    audio.play();
-    startLesson1();
-  }}>
-              <div style={{ display: "flex", alignItems: "center", gap: "10px", textAlign: "center", justifyContent: "center" }}>
-              Normal Pace <span style={{ fontSize: "18px" }}>(4 min per case)</span>
-              </div>
-            </button>
-            <button id="start-btn"   onClick={() => {
-    const audio = new Audio("/audio/button_click.mp4");
-    audio.volume = 0.4;
-    audio.play();
-    startLesson2();
-  }}>
-              <div style={{ display: "flex", alignItems: "center", gap: "10px", textAlign: "center", justifyContent: "center" }}>
-              <Disc size={24} />
-              <span>Rapid Rush </span>
-              <span style={{ fontSize: "14px" }}>(2 min per case)</span>
-            </div>
-            </button>
+            <div id="start-buttonwrapper">
+              <button id="start-btn" onClick={() => {
+                const audio = new Audio("/audio/button_click.mp4");
+                audio.volume = 0.4;
+                audio.play();
+                startLesson1();
+              }}>
+                <div style={{ display: "flex", alignItems: "center", gap: "10px", textAlign: "center", justifyContent: "center" }}>
+                  Normal Pace <span style={{ fontSize: "18px" }}>(4 min per case)</span>
+                </div>
+              </button>
+              <button id="start-btn" onClick={() => {
+                const audio = new Audio("/audio/button_click.mp4");
+                audio.volume = 0.4;
+                audio.play();
+                startLesson2();
+              }}>
+                <div style={{ display: "flex", alignItems: "center", gap: "10px", textAlign: "center", justifyContent: "center" }}>
+                  <Disc size={24} />
+                  <span>Rapid Rush </span>
+                  <span style={{ fontSize: "14px" }}>(2 min per case)</span>
+                </div>
+              </button>
             </div>
           </main>
         )}
