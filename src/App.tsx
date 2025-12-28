@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { Scale, Clock, Gavel, Sparkles, Wand2, Trophy, Zap, Star, Disc } from 'lucide-react';
-import './App.css';
+import './index.css';
 import { playSound } from "./sound";
 
 const FALLBACK_CASES = {
