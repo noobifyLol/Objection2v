@@ -454,7 +454,7 @@ export default function App() {
                   </div>
 
                   <div className="input-section2">
-                    <h3 style={{fontSize: '24px', marginBottom: '15px', textAlign: 'center'}}>Your Defense Argument:</h3>
+                    <h3 style={{fontSize: '24px', marginBottom: '15px', textAlign: 'center'}}>Your Defense Argument <span style ={{color : '#ffd43b'}}>(Take a Side on the ARGUMENT):</span></h3>
                     <textarea
                       value={argument}
                       onChange={(e) => setArgument(e.target.value)}
