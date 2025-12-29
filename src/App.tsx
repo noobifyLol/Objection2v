@@ -87,7 +87,7 @@ export default function App() {
     if (!argument.trim()) showToast('info', 'Auto-submitted', 'Time expired — submitting an empty argument.');
 
     try {
-      const resp = await fetch('http://localhost:3000/api/judge-argument', {
+      const resp = await fetch('/api/judge-argument', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ prompt, argument: submittedArgument })
@@ -221,7 +221,7 @@ export default function App() {
       const timerDuration = lessonType === 'rapid' ? 120 : 240;
       const fullPrompt = CASE_GENERATION_PROMPT(currentRound, lessonType);
 
-      const resp = await fetch('http://localhost:3000/api/generate-prompt', {
+      const resp = await fetch('/api/generate-prompt', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ prompt: fullPrompt, currentRound, lessonType })
