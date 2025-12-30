@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { Scale, Clock, Gavel, Sparkles, Wand2, Trophy, Zap, Star, Disc } from 'lucide-react';
+import './App.css';
 
 const FALLBACK_CASES = {
   rapid: [
@@ -17,7 +18,7 @@ const FALLBACK_CASES = {
 // API Functions
 const API_BASE = process.env.REACT_APP_API_URL || '';
 
-async function post(path : String, body : any) {
+async function post(path: string, body: any): Promise<any> {
   const res = await fetch(`${API_BASE}${path}`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -32,14 +33,14 @@ async function post(path : String, body : any) {
   return res.json();
 }
 
-function generateCase( currentRound: number, lessonType : string) {
+function generateCase(currentRound: number, lessonType: string): Promise<any> {
   return post('/api/generate-prompt', {
     currentRound,
     lessonType
   });
 }
 
-function judgeArgument(prompt : String, argument : String) {
+function judgeArgument(prompt: string, argument: string): Promise<any> {
   return post('/api/judge-argument', {
     prompt,
     argument
@@ -47,7 +48,7 @@ function judgeArgument(prompt : String, argument : String) {
 }
 
 // Sound utility
-const playSound = (src : any) => {
+const playSound = (src: string) => {
   const audio = new Audio(src);
   audio.volume = 0.3;
   audio.play().catch(() => {});
@@ -289,175 +290,170 @@ export default function App() {
   const progressPercent = Math.max(0, Math.min(100, Math.round((timeLeft / timerDuration) * 100)));
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-indigo-900 via-purple-900 to-pink-800 text-white relative overflow-hidden">
-      {/* Background Effects */}
-      <div className="absolute inset-0 opacity-30">
-        <div className="absolute top-20 left-10 w-72 h-72 bg-blue-500 rounded-full mix-blend-multiply filter blur-xl animate-pulse"></div>
-        <div className="absolute top-40 right-10 w-72 h-72 bg-purple-500 rounded-full mix-blend-multiply filter blur-xl animate-pulse delay-700"></div>
-        <div className="absolute bottom-20 left-1/2 w-72 h-72 bg-pink-500 rounded-full mix-blend-multiply filter blur-xl animate-pulse delay-1000"></div>
-      </div>
+    <>
+      <div id="full-screen">
+        <div className="bg-orbs" aria-hidden="true">
+          <span className="orb orb-1" />
+          <span className="orb orb-2" />
+          <span className="orb orb-3" />
+          <span className="orb orb-4" />
+        </div>
+        <div className="diagonal-ribbon" aria-hidden="true" />
+        <div className="stage-spotlight" aria-hidden="true" />
+        <div className="floating-ornaments" aria-hidden="true">
+          <span className="ornament o-1" />
+          <span className="ornament o-2" />
+          <span className="ornament o-3" />
+          <span className="ornament o-4" />
+          <span className="ornament o-5" />
+        </div>
 
-      {!started && (
-        <main className={`relative z-10 flex flex-col items-center justify-center min-h-screen p-8 transition-opacity duration-700 ${fadeClass === 'fade-out' ? 'opacity-0' : 'opacity-100'}`}>
-          <div className="text-center mb-12 flex items-center gap-6">
-            <Scale size={80} className="animate-bounce" />
-            <h1 className="text-7xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-yellow-200 to-yellow-400">
-              Objection!
-            </h1>
-            <Gavel size={80} className="animate-bounce" />
-          </div>
+        {!started && (
+          <main id="main-wrapper" className={fadeClass}>
+            <div id="top">
+              <Scale size={80} />
+              <h1>Objection!</h1>
+              <Gavel size={80} />
+            </div>
 
-          <p className="text-xl text-center max-w-3xl mb-12 leading-relaxed">
-            You're a rookie lawyer/debater defending clients from marginalized backgrounds.
-            Face 3 cases involving digital privacy, algorithmic bias, and social justice or any other debate problem.
-          </p>
+            <p id="description">
+              You're a rookie lawyer/debater defending clients from marginalized backgrounds.
+              Face 3 cases involving digital privacy, algorithmic bias, and social justice or any other debate problem.
+            </p>
 
-          <div className="flex flex-col gap-6 w-full max-w-md">
-            <button
-              onClick={startLesson1}
-              className="bg-gradient-to-r from-blue-500 to-purple-600 hover:from-blue-600 hover:to-purple-700 text-white font-bold py-6 px-8 rounded-xl shadow-2xl transform transition hover:scale-105 active:scale-95"
-            >
-              <div className="flex items-center justify-center gap-3">
-                <span className="text-2xl">Normal Pace</span>
-                <span className="text-lg opacity-80">(4 min per case)</span>
-              </div>
-            </button>
+            <div id="start-buttonwrapper">
+              <button id="start-btn" onClick={startLesson1}>
+                <div style={{ display: "flex", alignItems: "center", gap: "10px", textAlign: "center", justifyContent: "center" }}>
+                  Normal Pace <span style={{ fontSize: "18px" }}>(4 min per case)</span>
+                </div>
+              </button>
+              <button id="start-btn" onClick={startLesson2}>
+                <div style={{ display: "flex", alignItems: "center", gap: "10px", textAlign: "center", justifyContent: "center" }}>
+                  <Disc size={24} />
+                  <span>Rapid Rush</span>
+                  <span style={{ fontSize: "14px" }}>(2 min per case)</span>
+                </div>
+              </button>
+            </div>
+          </main>
+        )}
 
-            <button
-              onClick={startLesson2}
-              className="bg-gradient-to-r from-pink-500 to-red-600 hover:from-pink-600 hover:to-red-700 text-white font-bold py-6 px-8 rounded-xl shadow-2xl transform transition hover:scale-105 active:scale-95"
-            >
-              <div className="flex items-center justify-center gap-3">
-                <Disc size={24} />
-                <span className="text-2xl">Rapid Rush</span>
-                <span className="text-lg opacity-80">(2 min per case)</span>
-              </div>
-            </button>
-          </div>
-        </main>
-      )}
-
-      {started && (
-        <main className="relative z-10 min-h-screen p-8">
-          <div className="max-w-4xl mx-auto">
+        {started && (
+          <main id="main2-wrapper">
             {gameState === 'input' && (
               <div>
-                <h2 className="text-5xl font-bold text-center mb-12">
+                <h2 style={{fontSize: '36px', textAlign: 'center', marginBottom: '30px'}}>
                   Case {currentRound} of 3
                 </h2>
-
-                <div className="bg-white/10 backdrop-blur-md rounded-2xl p-8 mb-8">
+                
+                <div className="input-section">
                   <input
                     type="text"
                     placeholder="Enter your own case scenario or generate one with AI..."
                     value={customPrompt}
                     onChange={(e) => setCustomPrompt(e.target.value)}
-                    className="w-full bg-white/20 border-2 border-white/30 rounded-xl px-6 py-4 text-white placeholder-white/60 focus:outline-none focus:border-yellow-300 text-lg"
                   />
-
-                  <div className="flex gap-4 mt-6">
-                    <button
-                      className="flex-1 bg-gradient-to-r from-green-500 to-emerald-600 hover:from-green-600 hover:to-emerald-700 text-white font-bold py-4 px-6 rounded-xl shadow-lg transform transition hover:scale-105 active:scale-95"
-                      onClick={useCustomPrompt}
-                    >
+                  
+                  <div className="button-group">
+                    <button className="btn btn-primary" onClick={useCustomPrompt}>
                       Use My Case
                     </button>
-                    <button
-                      className="flex-1 bg-gradient-to-r from-purple-500 to-indigo-600 hover:from-purple-600 hover:to-indigo-700 text-white font-bold py-4 px-6 rounded-xl shadow-lg transform transition hover:scale-105 active:scale-95 flex items-center justify-center gap-2"
-                      onClick={generateAIPrompt}
-                      disabled={isGenerating}
-                    >
+                    <button className="btn btn-primary" onClick={generateAIPrompt} disabled={isGenerating}>
                       <Wand2 size={20} />
-                      {isGenerating ? 'Generating...' : 'Generate AI Case'}
+                      {isGenerating ? 'Generating Case...' : 'Generate AI Case'}
                     </button>
                   </div>
                 </div>
 
-                <div className="grid md:grid-cols-3 gap-6">
-                  {[
-                    { icon: '⚖️', title: 'Build Your Case', desc: 'Choose to create your own scenario or let AI generate a debate topic for you.' },
-                    { icon: '💡', title: 'Think Strategically', desc: 'Develop a compelling argument with evidence and empathy for your position.' },
-                    { icon: '🎯', title: 'Get Evaluated', desc: 'Judge Gemini will score your defense and give constructive feedback.' }
-                  ].map((card, i) => (
-                    <div key={i} className="bg-white/10 backdrop-blur-md rounded-xl p-6 text-center">
-                      <div className="text-4xl mb-3">{card.icon}</div>
-                      <h3 className="text-xl font-bold mb-2">{card.title}</h3>
-                      <p className="text-sm opacity-90">{card.desc}</p>
-                    </div>
-                  ))}
+                <div className="info-cards-grid">
+                  <div className="info-card">
+                    <div className="card-icon">⚖️</div>
+                    <h3>Build Your Case</h3>
+                    <p>Choose to create your own scenario or let AI generate a debate topic for you.</p>
+                  </div>
+                  <div className="info-card">
+                    <div className="card-icon">💡</div>
+                    <h3>Think Strategically</h3>
+                    <p>Develop a compelling argument with evidence and empathy for your position.</p>
+                  </div>
+                  <div className="info-card">
+                    <div className="card-icon">🎯</div>
+                    <h3>Get Evaluated</h3>
+                    <p>Judge Gemini will score your defense and give constructive feedback.</p>
+                  </div>
                 </div>
               </div>
             )}
 
             {gameState === 'playing' && (
-              <div>
-                <div className="flex justify-between items-center mb-8">
-                  <div className="text-3xl font-bold">Case {currentRound} of 3</div>
-                  <div className={`flex items-center gap-3 text-3xl font-bold ${timeLeft < 30 ? 'text-red-400 animate-pulse' : ''}`}>
-                    <Clock size={32} />
-                    {formatTime(timeLeft)}
+              <div className="playingdiv">
+                <div style={{width: '100%'}}>
+                  <div className="round-header">
+                    <div style={{fontSize: '24px', fontWeight: 'bold'}}>Case {currentRound} of 3</div>
+                    <div className={`timer ${timeLeft < 30 ? 'warning' : ''}`}>
+                      <Clock size={32} style={{display: 'inline', marginRight: '10px'}} />
+                      {formatTime(timeLeft)}
+                    </div>
                   </div>
-                </div>
 
-                <div className="bg-white/10 backdrop-blur-md rounded-2xl p-8 mb-6">
-                  <strong className="text-2xl">⚖️ THE CASE:</strong>
-                  <p className="mt-4 text-lg leading-relaxed">{prompt}</p>
-                </div>
+                  <div className="prompt-box" style={lessonType === 'rapid' ? {fontSize: '18px', padding: '20px'} : {}}>
+                    <strong>⚖️ THE CASE:</strong><br/><br/>
+                    {prompt}
+                  </div>
 
-                <div className="mb-6">
-                  <div className="bg-white/20 rounded-full h-3 overflow-hidden">
-                    <div
-                      className="bg-gradient-to-r from-yellow-400 to-yellow-600 h-full transition-all duration-1000"
-                      style={{ width: `${progressPercent}%` }}
+                  <div className="playing-extra" style={{textAlign: 'center'}}>
+                    <div className="progress-wrap">
+                      <div className="progress-bar" aria-hidden="true">
+                        <div className="progress-fill" style={{width: `${progressPercent}%`}} />
+                      </div>
+                    </div>
+                    <div style={{marginTop: 8, color: 'rgba(255,255,255,0.8)'}}>Time remaining: {formatTime(timeLeft)}</div>
+                  </div>
+
+                  <div className="input-section2">
+                    <h3 style={{fontSize: '24px', marginBottom: '15px', textAlign: 'center'}}>
+                      Your Defense Argument <span style={{color: '#ffd43b'}}>(Take a Side on the ARGUMENT):</span>
+                    </h3>
+                    <textarea
+                      value={argument}
+                      onChange={(e) => setArgument(e.target.value)}
+                      placeholder="Write your argument defending your client or position here to sway the judges..."
                     />
+                    <div style={{display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '15px', width: '85%', margin: '15px auto 0'}}>
+                      <span style={{fontSize: '16px', color: '#a0aec0'}}>{argument.length} characters</span>
+                      <button 
+                        className="btn btn-success" 
+                        onClick={handleSubmitArgument}
+                        disabled={!argument.trim()}
+                      >
+                        Submit Defense
+                      </button>
+                    </div>
                   </div>
-                  <div className="text-center mt-2 text-sm opacity-80">Time remaining: {formatTime(timeLeft)}</div>
-                </div>
 
-                <div className="bg-white/10 backdrop-blur-md rounded-2xl p-8 mb-6">
-                  <h3 className="text-2xl font-bold mb-4 text-center">
-                    Your Defense Argument <span className="text-yellow-300">(Take a Side on the ARGUMENT)</span>
-                  </h3>
-                  <textarea
-                    value={argument}
-                    onChange={(e) => setArgument(e.target.value)}
-                    placeholder="Write your argument defending your client or position here to sway the judges..."
-                    className="w-full bg-white/20 border-2 border-white/30 rounded-xl px-6 py-4 text-white placeholder-white/60 focus:outline-none focus:border-yellow-300 text-lg min-h-[200px]"
-                  />
-                  <div className="flex justify-between items-center mt-4">
-                    <span className="text-sm opacity-70">{argument.length} characters</span>
-                    <button
-                      className="bg-gradient-to-r from-green-500 to-emerald-600 hover:from-green-600 hover:to-emerald-700 disabled:from-gray-500 disabled:to-gray-600 text-white font-bold py-3 px-8 rounded-xl shadow-lg transform transition hover:scale-105 active:scale-95 disabled:scale-100"
-                      onClick={handleSubmitArgument}
-                      disabled={!argument.trim()}
-                    >
-                      Submit Defense
-                    </button>
+                  <div className="gameplay-tips">
+                    <h4 style={{marginTop: 0, fontSize: '16px', marginBottom: '12px'}}>💡 Quick Tips</h4>
+                    <ul style={{margin: 0, paddingLeft: '18px', fontSize: '13px', lineHeight: '1.6'}}>
+                      <li>Use concrete examples to support your argument</li>
+                      <li>Address counterarguments proactively</li>
+                      <li>Show empathy for affected parties</li>
+                      <li>Keep language clear and persuasive</li>
+                    </ul>
                   </div>
-                </div>
-
-                <div className="bg-white/10 backdrop-blur-md rounded-xl p-6">
-                  <h4 className="text-lg font-bold mb-3">💡 Quick Tips</h4>
-                  <ul className="space-y-2 text-sm">
-                    <li>• Use concrete examples to support your argument</li>
-                    <li>• Address counterarguments proactively</li>
-                    <li>• Show empathy for affected parties</li>
-                    <li>• Keep language clear and persuasive</li>
-                  </ul>
                 </div>
               </div>
             )}
 
             {gameState === 'judging' && (
-              <div className="text-center py-20">
-                <div className="relative inline-block mb-8">
-                  <Gavel size={80} className="text-yellow-300 animate-bounce" />
-                  <Sparkles size={40} className="absolute -top-2 -right-8 text-purple-300 animate-pulse" />
+              <div style={{textAlign: 'center', paddingTop: '100px'}}>
+                <div style={{position: 'relative', display: 'inline-block'}}>
+                  <Gavel size={80} style={{margin: '0 auto 30px', animation: 'bounce 1s infinite', color: '#ffd43b'}} />
+                  <Sparkles size={40} style={{position: 'absolute', top: 0, right: -20, color: '#667eea', animation: 'pulse 2s infinite'}} />
                 </div>
-                <h2 className="text-5xl font-bold mb-8">⚖️ Judge Gemini is Deliberating...</h2>
-                <div className="flex flex-col items-center gap-4">
-                  <div className="w-16 h-16 border-4 border-yellow-300 border-t-transparent rounded-full animate-spin"></div>
-                  <span className="text-xl">✨ Analyzing your defense with AI wisdom...</span>
+                <h2 style={{fontSize: '36px', marginBottom: '30px'}}>⚖️ Judge Gemini is Deliberating...</h2>
+                <div className="loading">
+                  <div className="spinner"></div>
+                  <span>✨ Analyzing your defense with AI wisdom...</span>
                 </div>
               </div>
             )}
@@ -465,50 +461,40 @@ export default function App() {
             {gameState === 'results' && (
               <div>
                 {showConfetti && (
-                  <div className="fixed inset-0 pointer-events-none z-50">
+                  <div className="confetti-container">
                     {[...Array(50)].map((_, i) => (
-                      <div
-                        key={i}
-                        className="absolute w-2 h-2 animate-[fall_3s_linear_infinite]"
-                        style={{
-                          left: `${Math.random() * 100}%`,
-                          animationDelay: `${Math.random() * 3}s`,
-                          backgroundColor: ['#667eea', '#764ba2', '#f093fb', '#ffd43b', '#51cf66'][Math.floor(Math.random() * 5)]
-                        }}
-                      />
+                      <div key={i} className="confetti" style={{
+                        left: `${Math.random() * 100}%`,
+                        animationDelay: `${Math.random() * 3}s`,
+                        backgroundColor: ['#667eea', '#764ba2', '#f093fb', '#ffd43b', '#51cf66'][Math.floor(Math.random() * 5)]
+                      }}></div>
                     ))}
                   </div>
                 )}
-
-                <div className="text-center mb-8">
-                  <Trophy size={60} className="text-yellow-300 mx-auto animate-bounce" />
+                
+                <div style={{textAlign: 'center', marginBottom: '20px'}}>
+                  <Trophy size={60} color="#ffd43b" style={{animation: 'bounce 2s infinite'}} />
                 </div>
-
-                <h2 className="text-5xl font-bold text-center mb-8">
+                
+                <h2 style={{fontSize: '36px', textAlign: 'center', marginBottom: '30px'}}>
                   ⚖️ Case {currentRound} Verdict
                 </h2>
-
-                <div className="bg-white/10 backdrop-blur-md rounded-2xl p-8 mb-8">
-                  <div className="font-bold text-xl mb-4">Judge Gemini's Decision</div>
-                  <div className="text-lg leading-relaxed whitespace-pre-wrap">{verdict}</div>
+                
+                <div className="verdict-box">
+                  <div style={{fontWeight: 800, marginBottom: 10}}>Judge Gemini's Decision</div>
+                  {verdict}
                 </div>
 
-                <div className="flex justify-center">
+                <div className="button-group">
                   {currentRound < 3 ? (
-                    <button
-                      className="bg-gradient-to-r from-blue-500 to-purple-600 hover:from-blue-600 hover:to-purple-700 text-white font-bold py-4 px-8 rounded-xl shadow-lg transform transition hover:scale-105 active:scale-95 flex items-center gap-2"
-                      onClick={nextRound}
-                    >
+                    <button className="btn btn-primary" onClick={nextRound}>
                       <Zap size={20} />
                       Next Case →
                     </button>
                   ) : (
-                    <button
-                      className="bg-gradient-to-r from-green-500 to-emerald-600 hover:from-green-600 hover:to-emerald-700 text-white font-bold py-4 px-8 rounded-xl shadow-lg transform transition hover:scale-105 active:scale-95 flex items-center gap-2"
-                      onClick={nextRound}
-                    >
+                    <button className="btn btn-success" onClick={nextRound}>
                       <Star size={20} />
-                      See Final Results
+                      See Final Results 
                     </button>
                   )}
                 </div>
@@ -517,98 +503,81 @@ export default function App() {
 
             {gameState === 'end' && (
               <div>
-                <div className="text-center mb-8 relative">
-                  <Trophy size={100} className="text-yellow-300 mx-auto animate-bounce" />
-                  <Star size={50} className="absolute top-0 left-1/3 text-purple-400 animate-pulse" />
-                  <Star size={50} className="absolute top-0 right-1/3 text-pink-400 animate-pulse" style={{ animationDelay: '0.5s' }} />
+                <div style={{textAlign: 'center', marginBottom: '30px'}}>
+                  <Trophy size={100} color="#ffd43b" style={{animation: 'bounce 2s infinite'}} />
+                  <Star size={50} style={{position: 'absolute', top: '100px', left: 'calc(50% - 80px)', color: '#667eea', animation: 'pulse 2s infinite'}} />
+                  <Star size={50} style={{position: 'absolute', top: '100px', right: 'calc(50% - 80px)', color: '#f093fb', animation: 'pulse 2s infinite 0.5s'}} />
                 </div>
-
-                <h2 className="text-6xl font-bold text-center mb-8">
+                
+                <h2 style={{fontSize: '48px', textAlign: 'center', marginBottom: '20px'}}>
                   🎉 Trial Complete! 🎉
                 </h2>
-
-                <div className="text-center mb-8">
-                  <div className="text-8xl font-bold text-yellow-300 mb-4">
-                    {Math.round(totalScore / 3)}/100
-                  </div>
-                  <p className="text-3xl">
-                    {Math.round(totalScore / 3) >= 90 ? '🏆 JUSTICE CHAMPION!' :
-                     Math.round(totalScore / 3) >= 75 ? '⭐ RISING ADVOCATE!' :
-                     Math.round(totalScore / 3) >= 60 ? '💪 DEDICATED DEFENDER!' :
-                     '📚 LEARNING LAWYER!'}
-                  </p>
+                
+                <div className="final-score">
+                  {Math.round(totalScore / 3)}/100
                 </div>
+                <p style={{textAlign: 'center', fontSize: '24px', marginBottom: '40px', color: 'rgba(255,255,255,0.9)'}}>
+                  {Math.round(totalScore / 3) >= 90 ? '🏆 JUSTICE CHAMPION!' : 
+                   Math.round(totalScore / 3) >= 75 ? '⭐ RISING ADVOCATE!' :
+                   Math.round(totalScore / 3) >= 60 ? '💪 DEDICATED DEFENDER!' :
+                   '📚 LEARNING LAWYER!'}
+                </p>
 
-                <div className="grid md:grid-cols-3 gap-6 mb-8">
+                <div className="score-grid">
                   {scores.map((score, i) => (
-                    <div key={i} className="bg-white/10 backdrop-blur-md rounded-xl p-6 text-center">
-                      <div className="text-sm opacity-70 mb-2">Case {i + 1}</div>
-                      <div className="text-5xl font-bold mb-2">{score}</div>
-                      <div className="text-2xl">
+                    <div key={i} className="score-card">
+                      <div className="label">Case {i + 1}</div>
+                      <div className="value">{score}</div>
+                      <div style={{fontSize: '14px', marginTop: '10px'}}>
                         {score >= 90 ? '🌟' : score >= 75 ? '✨' : score >= 60 ? '💫' : '⭐'}
                       </div>
                     </div>
                   ))}
                 </div>
 
-                <div className="flex justify-center">
-                  <button
-                    className="bg-gradient-to-r from-purple-500 to-indigo-600 hover:from-purple-600 hover:to-indigo-700 text-white font-bold py-4 px-8 rounded-xl shadow-lg transform transition hover:scale-105 active:scale-95 flex items-center gap-2"
-                    onClick={restartGame}
-                  >
+                <div className="button-group">
+                  <button className="btn btn-primary" onClick={restartGame}>
                     <Sparkles size={20} />
                     New Trial
                   </button>
                 </div>
               </div>
             )}
-          </div>
-        </main>
-      )}
+          </main>
+        )}
 
-      <button
-        onClick={openTutorialModal}
-        className="fixed bottom-8 right-8 w-12 h-12 bg-white/20 backdrop-blur-md hover:bg-white/30 rounded-full flex items-center justify-center text-2xl font-bold shadow-lg transition z-50"
-      >
-        i
-      </button>
+        <button className="info-button" onClick={openTutorialModal}>
+          i
+        </button>
 
-      {showTutorial && (
-        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4 z-50" onClick={closeTutorialModal}>
-          <div className="bg-white/10 backdrop-blur-md rounded-2xl p-8 max-w-2xl w-full" onClick={(e) => e.stopPropagation()}>
-            <h3 className="text-3xl font-bold mb-4">⚖️ How to Defend Justice</h3>
-            <p className="mb-4 text-lg">Welcome, Rookie Lawyer/Debater! You'll handle three cases involving tech injustice or any debate topic, such as national identity or social issues.</p>
-            <ul className="space-y-3 mb-6 text-lg">
-              <li><strong>Generate a case</strong> about digital privacy, algorithmic bias, online harassment, or tech access, or any other debate topic</li>
-              <li><strong>Build your defense</strong> with empathy, evidence, and legal reasoning (2 min per case)</li>
-              <li><strong>Get feedback</strong> from Judge Gemini on how to strengthen your advocacy</li>
-            </ul>
-            <p className="mb-6 text-lg"><strong>Tips:</strong> Cite specific examples, address systemic issues, and always center your client's perspective!</p>
-            <div className="flex justify-center">
-              <button
-                className="bg-gradient-to-r from-green-500 to-emerald-600 hover:from-green-600 hover:to-emerald-700 text-white font-bold py-3 px-8 rounded-xl shadow-lg transform transition hover:scale-105 active:scale-95"
-                onClick={closeTutorialModal}
-              >
-                Ready to Defend!
-              </button>
+        {showTutorial && (
+          <div className="tutorial-modal" onClick={closeTutorialModal}>
+            <div className="tutorial-card" onClick={(e) => e.stopPropagation()}>
+              <h3>⚖️ How to Defend Justice</h3>
+              <p>Welcome, Rookie Lawyer/Debater! You'll handle three cases involving tech injustice or any debate topic, such as national identity or social issues.</p>
+              <ul>
+                <li><strong>Generate a case</strong> about digital privacy, algorithmic bias, online harassment, or tech access, or any other debate topic</li>
+                <li><strong>Build your defense</strong> with empathy, evidence, and legal reasoning (2 min per case)</li>
+                <li><strong>Get feedback</strong> from Judge Gemini on how to strengthen your advocacy</li>
+              </ul>
+              <p><strong>Tips:</strong> Cite specific examples, address systemic issues, and always center your client's perspective!</p>
+              <div className="tutorial-actions">
+                <button className="btn btn-primary" onClick={closeTutorialModal}>Ready to Defend!</button>
+              </div>
             </div>
           </div>
-        </div>
-      )}
+        )}
 
-      {toast.open && (
-        <div className="fixed top-8 right-8 bg-white/10 backdrop-blur-md text-white p-6 rounded-xl shadow-2xl z-50 max-w-sm">
-          <div className="font-bold text-lg mb-2">{toast.content?.title}</div>
-          <div className="mb-4">{toast.content?.message}</div>
-          <button
-            onClick={() => setToast({ open: false, content: null })}
-            className="bg-white/20 hover:bg-white/30 px-4 py-2 rounded-lg transition"
-          >
-            Close
-          </button>
-        </div>
-      )}
-
-    </div>
+        {toast.open && (
+          <div className={`feedback-toast ${toast.content?.type}`}>
+            <div className="toast-header">
+              <strong>{toast.content?.title}</strong>
+              <button className="toast-close" onClick={() => setToast({ open: false, content: null })}>✕</button>
+            </div>
+            <div className="toast-body">{toast.content?.message}</div>
+          </div>
+        )}
+      </div>
+    </>
   );
 }
