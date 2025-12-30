@@ -1,12 +1,22 @@
-
 // server.js
 import express from "express";
 import cors from "cors";
 import dotenv from "dotenv";
+import path from "path";
+import { fileURLToPath } from "url";
 import { GoogleGenerativeAI } from "@google/generative-ai";
 
 dotenv.config();
 
+/* =======================
+   PATH FIX FOR ES MODULES
+======================= */
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
+/* =======================
+   APP SETUP
+======================= */
 const app = express();
 app.use(cors());
 app.use(express.json());
@@ -50,7 +60,7 @@ async function safeGenerate(modelName, prompt) {
 }
 
 /* =======================
-   GENERATE CASE (UNCHANGED TEMPLATE)
+   GENERATE CASE
 ======================= */
 app.post("/api/generate-prompt", async (req, res) => {
   try {
@@ -63,37 +73,32 @@ Round Information:
 - Lesson Type: ${lessonType === "rapid" ? "Rapid Rush (2 min per case, MUST be SHORT)" : "Normal Pace (4 min per case)"}
 
 Topic Categories (choose ANY diverse topic):
-- Civil Rights & Social Justice (discrimination, voting rights, free speech, privacy)
-- Healthcare & Public Health (access to care, medical ethics, insurance, mental health)
-- Environmental & Climate Issues (sustainability, pollution, conservation, climate policy)
-- Criminal Justice (sentencing reform, policing, rehabilitation, wrongful conviction)
-- Education (access, equity, curriculum, student rights, funding)
-- Economics & Labor (worker rights, wage disputes, unions, corporate responsibility)
-- Technology & Ethics (AI bias, data privacy, surveillance, platform regulation)
-- Immigration & Citizenship (asylum, deportation, pathways to citizenship)
-- International Relations (human rights violations, trade disputes, conflict resolution)
-- Arts & Culture (censorship, cultural appropriation, intellectual property)
+- Civil Rights & Social Justice
+- Healthcare & Public Health
+- Environmental & Climate Issues
+- Criminal Justice
+- Education
+- Economics & Labor
+- Technology & Ethics
+- Immigration & Citizenship
+- International Relations
+- Arts & Culture
 
 Rules:
-- Use a new, distinct client or subject name that has not appeared previously.
+- Use a new, distinct client or subject name.
 - Select a DIFFERENT topic category than previous rounds.
 - Round ${
-      currentRound === 1 ? "1: moderately challenging issue" : 
-      currentRound === 2 ? "2: complex issue with multiple perspectives" : 
+      currentRound === 1 ? "1: moderately challenging issue" :
+      currentRound === 2 ? "2: complex issue with multiple perspectives" :
       "3: highly difficult systemic or moral dilemma"
     }.
-- Scenario must be completely different from previous cases.
 ${lessonType === "rapid" ? "CRITICAL: 15-35 words, 1-2 sentences only." : ""}
 
 Case Requirements:
 - Start with "Your client..." or "The scenario..."
-- For rapid: 1-2 sentences (15-35 words); for normal: 2-4 sentences (40-80 words).
-- Clearly describe the core issue, stakes, and why it matters.
-- Debate-worthy, realistic, and morally engaging.
-- Include specific details that make the case feel real.
-
-Return ONLY the final case description.
-`; // ← exactly your text
+- Debate-worthy, realistic, morally engaging.
+- Return ONLY the final case description.
+`;
 
     const text = await safeGenerate("gemini-2.5-flash-lite", prompt);
     res.json({ prompt: text });
@@ -110,7 +115,7 @@ Return ONLY the final case description.
 });
 
 /* =======================
-   JUDGE ARGUMENT (UNCHANGED TEMPLATE)
+   JUDGE ARGUMENT
 ======================= */
 app.post("/api/judge-argument", async (req, res) => {
   const { prompt, argument } = req.body;
@@ -121,61 +126,18 @@ app.post("/api/judge-argument", async (req, res) => {
 
   try {
     const judgePrompt = `
-You are Judge Gemini, an expert debate evaluator with expertise in rhetoric, ethics, and argumentation.
+You are Judge Gemini, an expert debate evaluator.
 
 CASE:
 ${prompt}
 
-ARGUMENT TO EVALUATE:
+ARGUMENT:
 ${argument}
 
-Evaluate this argument comprehensively across these criteria:
-
-1. LEGAL/ETHICAL REASONING (0-25 points)
-   - Strength of legal or ethical framework
-   - Understanding of relevant principles
-   - Application of precedents or moral philosophy
-
-2. EVIDENCE & SUPPORT (0-25 points)
-   - Quality and relevance of evidence
-   - Use of examples, statistics, or expert testimony
-   - Credibility of sources
-
-3. EMPATHY & IMPACT ANALYSIS (0-25 points)
-   - Understanding of affected parties' perspectives
-   - Recognition of real-world consequences
-   - Emotional intelligence and compassion
-
-4. RHETORIC & PERSUASION (0-25 points)
-   - Clarity and organization of argument
-   - Persuasive language and techniques
-   - Anticipation of counterarguments
-
-Return your evaluation EXACTLY in this format:
-
-SCORE: [0-100]
-
-VERDICT: [3-4 sentences summarizing overall performance and argument quality]
-
-DETAILED ANALYSIS:
-
-Legal/Ethical Reasoning ([X]/25): [2-3 sentences analyzing the strength of their legal or ethical framework, what worked well, and what could be improved]
-
-Evidence & Support ([X]/25): [2-3 sentences evaluating their use of evidence, examples, and supporting material]
-
-Empathy & Impact ([X]/25): [2-3 sentences assessing their understanding of human impact and affected parties' perspectives]
-
-Rhetoric & Persuasion ([X]/25): [2-3 sentences reviewing their persuasive techniques, clarity, and argumentation structure]
-
-SPECIFIC FEEDBACK: [3-4 sentences with concrete, actionable advice on how to improve this specific argument. Be constructive but honest.]
-
-STRENGTHS: [List 2-3 specific things they did well]
-
-AREAS FOR GROWTH: [List 2-3 specific areas where they can improve]
+Return a score (0-100) and structured feedback.
 `;
 
     const verdictRaw = await safeGenerate("gemini-2.5-flash-lite", judgePrompt);
-
     const scoreMatch = verdictRaw.match(/SCORE:\s*(\d+)/i);
     const score = scoreMatch ? parseInt(scoreMatch[1]) : 75;
 
@@ -184,10 +146,7 @@ AREAS FOR GROWTH: [List 2-3 specific areas where they can improve]
   } catch (err) {
     console.error("Judge error:", err.message);
 
-    // ✅ argument IS IN SCOPE HERE
-    const argumentLength = argument.length;
-    const fallbackScore = Math.min(100, Math.max(60, argumentLength / 5));
-
+    const fallbackScore = Math.min(100, Math.max(60, argument.length / 5));
     res.json({
       verdict: "Fallback evaluation used due to AI error.",
       score: fallbackScore,
@@ -212,11 +171,18 @@ app.get("/test-gemini", async (_req, res) => {
 });
 
 /* =======================
+   SERVE REACT BUILD (CRA)
+======================= */
+app.use(express.static(path.join(__dirname, "build")));
+
+app.get("*", (_req, res) => {
+  res.sendFile(path.join(__dirname, "build", "index.html"));
+});
+
+/* =======================
    START SERVER (RENDER SAFE)
 ======================= */
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () =>
   console.log(`✅ Server running on port ${PORT}`)
 );
-
-
