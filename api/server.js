@@ -5,7 +5,8 @@ import dotenv from "dotenv";
 import path from "path";
 import { fileURLToPath } from "url";
 import { GoogleGenerativeAI } from "@google/generative-ai";
-
+import { fileURLToPath } from "url";
+import path from "path";
 dotenv.config();
 
 /* =======================
@@ -175,7 +176,7 @@ app.get("/test-gemini", async (_req, res) => {
 ======================= */
 app.use(express.static(path.join(__dirname, "build")));
 
-app.get("*", (_req, res) => {
+app.get("/*", (_req, res) => {
   res.sendFile(path.join(__dirname, "build", "index.html"));
 });
 
