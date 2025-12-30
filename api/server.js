@@ -1,3 +1,4 @@
+
 // server.js
 import express from "express";
 import cors from "cors";
@@ -14,12 +15,12 @@ app.use(express.json());
    ENV + API SETUP
 ======================= */
 const apiKey = process.env.GEMINI_API_KEY;
+
 if (!apiKey) {
-  console.error("❌ Missing GEMINI_API_KEY in .env");
-  process.exit(1);
+  console.warn("⚠️ GEMINI_API_KEY missing — Gemini routes will fail");
 }
 
-const genAI = new GoogleGenerativeAI(apiKey);
+const genAI = apiKey ? new GoogleGenerativeAI(apiKey) : null;
 
 /* =======================
    SAFE RESPONSE READER
@@ -27,10 +28,8 @@ const genAI = new GoogleGenerativeAI(apiKey);
 function extractText(result) {
   try {
     const textFn = result?.response?.text;
-    const text = typeof textFn === "function" ? textFn() : "";
-    return text?.trim() || "";
-  } catch (err) {
-    console.error("extractText error:", err);
+    return typeof textFn === "function" ? textFn().trim() : "";
+  } catch {
     return "";
   }
 }
@@ -39,32 +38,25 @@ function extractText(result) {
    SAFE GENERATE
 ======================= */
 async function safeGenerate(modelName, prompt) {
-  try {
-    const model = genAI.getGenerativeModel({ model: modelName });
-    const result = await model.generateContent(prompt);
+  if (!genAI) throw new Error("GEMINI_NOT_CONFIGURED");
 
-    console.log("Prompt feedback:", result?.response?.promptFeedback || "none");
+  const model = genAI.getGenerativeModel({ model: modelName });
+  const result = await model.generateContent(prompt);
 
-    const text = extractText(result);
+  const text = extractText(result);
+  if (!text) throw new Error("EMPTY_OR_BLOCKED_RESPONSE");
 
-    if (!text) throw new Error("EMPTY_OR_BLOCKED_RESPONSE");
-
-    return text;
-  } catch (err) {
-    console.error(`safeGenerate error for model ${modelName}:`, err);
-    throw err;
-  }
+  return text;
 }
 
 /* =======================
-   GENERATE CASE (EXPANDED TOPICS)
+   GENERATE CASE (UNCHANGED TEMPLATE)
 ======================= */
 app.post("/api/generate-prompt", async (req, res) => {
   try {
     const { currentRound, lessonType } = req.body;
 
-    const prompt = `
-Generate a unique debate case scenario for a debate practice program.
+    const prompt = `Generate a unique debate case scenario for a debate practice program.
 
 Round Information:
 - Current Round: ${currentRound} of 3
@@ -101,32 +93,33 @@ Case Requirements:
 - Include specific details that make the case feel real.
 
 Return ONLY the final case description.
-`.trim();
+`; // ← exactly your text
 
     const text = await safeGenerate("gemini-2.5-flash-lite", prompt);
-
     res.json({ prompt: text });
+
   } catch (err) {
     console.error("Generate error:", err.message);
     res.status(500).json({
       error: true,
-      fallback: { prompt: "Your client is accused of mishandling confidential information at work..." },
+      fallback: {
+        prompt: "Your client is accused of mishandling confidential information at work..."
+      }
     });
   }
 });
 
 /* =======================
-   JUDGE ARGUMENT (DETAILED & EXPANDED)
+   JUDGE ARGUMENT (UNCHANGED TEMPLATE)
 ======================= */
 app.post("/api/judge-argument", async (req, res) => {
+  const { prompt, argument } = req.body;
+
+  if (!prompt || !argument) {
+    return res.status(400).json({ error: "Missing input" });
+  }
+
   try {
-    const { prompt, argument } = req.body;
-
-    if (!prompt || !argument) {
-      return res.status(400).json({ error: "Missing input" });
-    }
-
-    // Construct the detailed judgment prompt
     const judgePrompt = `
 You are Judge Gemini, an expert debate evaluator with expertise in rhetoric, ethics, and argumentation.
 
@@ -181,82 +174,22 @@ STRENGTHS: [List 2-3 specific things they did well]
 AREAS FOR GROWTH: [List 2-3 specific areas where they can improve]
 `;
 
-    // Try to get AI judgment
     const verdictRaw = await safeGenerate("gemini-2.5-flash-lite", judgePrompt);
-    console.log("✅ Raw detailed verdict received");
 
-    // Extract score
     const scoreMatch = verdictRaw.match(/SCORE:\s*(\d+)/i);
     const score = scoreMatch ? parseInt(scoreMatch[1]) : 75;
 
-    // Return the full detailed response
-    res.status(200).json({
-      verdict: verdictRaw,
-      score
-    });
+    res.json({ verdict: verdictRaw, score });
 
   } catch (err) {
-    console.error("❌ Judge endpoint error:", err);
+    console.error("Judge error:", err.message);
 
-    // Calculate detailed fallback score
+    // ✅ argument IS IN SCOPE HERE
     const argumentLength = argument.length;
-    const hasEvidence = /example|evidence|study|research|data|statistic|according to|research shows/i.test(argument);
-    const hasEmpathy = /perspective|impact|affect|feel|experience|harm|benefit|suffer|struggle|vulnerable/i.test(argument);
-    const hasCounterargument = /however|although|while|some may argue|critics|opponents|on the other hand/i.test(argument);
-    const hasStructure = /first|second|finally|furthermore|additionally|in conclusion|therefore/i.test(argument);
-    
-    let reasoningScore = 10;
-    let evidenceScore = 10;
-    let empathyScore = 10;
-    let rhetoricsScore = 10;
-    
-    // Reasoning score
-    if (argumentLength > 300) reasoningScore += 8;
-    if (argumentLength > 500) reasoningScore += 7;
-    
-    // Evidence score
-    if (hasEvidence) evidenceScore += 10;
-    if ((argument.match(/example|evidence|study/gi) || []).length >= 2) evidenceScore += 5;
-    
-    // Empathy score
-    if (hasEmpathy) empathyScore += 10;
-    if ((argument.match(/impact|affect|harm|benefit/gi) || []).length >= 2) empathyScore += 5;
-    
-    // Rhetoric score
-    if (hasStructure) rhetoricsScore += 8;
-    if (hasCounterargument) rhetoricsScore += 7;
-    
-    const fallbackScore = reasoningScore + evidenceScore + empathyScore + rhetoricsScore;
+    const fallbackScore = Math.min(100, Math.max(60, argumentLength / 5));
 
-    const detailedFallback = `SCORE: ${fallbackScore}
-
-VERDICT: Your argument demonstrates ${argumentLength > 400 ? 'substantial' : 'initial'} understanding of the issue and presents a ${hasEvidence ? 'supported' : 'basic'} position. ${hasEmpathy ? 'You show awareness of human impact.' : 'Consider emphasizing the human element more.'} ${hasStructure ? 'Your organization helps the argument flow logically.' : 'Stronger organization would improve clarity.'}
-
-DETAILED ANALYSIS:
-
-Legal/Ethical Reasoning (${reasoningScore}/25): ${argumentLength > 300 ? 'You develop your reasoning with adequate depth and show understanding of the core principles involved.' : 'Your reasoning shows promise but would benefit from deeper exploration of ethical or legal frameworks. Consider how established principles apply to this case.'}
-
-Evidence & Support (${evidenceScore}/25): ${hasEvidence ? 'You include supporting evidence which strengthens your claims. To improve further, cite specific sources, statistics, or expert testimony that directly supports each major point.' : 'Your argument would be significantly stronger with concrete evidence, examples, or data. General statements need specific support to be persuasive.'}
-
-Empathy & Impact (${empathyScore}/25): ${hasEmpathy ? 'You demonstrate awareness of how this issue affects real people. Consider exploring multiple perspectives to show even deeper understanding of the stakes involved.' : 'Focus more on the human element—who is affected by this issue and how? Showing empathy and understanding of real-world impact makes arguments more compelling.'}
-
-Rhetoric & Persuasion (${rhetoricsScore}/25): ${hasStructure ? 'Your argument has logical structure which helps your points land effectively.' : 'Organize your thoughts more clearly with transitions and a logical flow.'} ${hasCounterargument ? 'Addressing counterarguments shows sophistication.' : 'Anticipating and addressing opposing views would strengthen your persuasiveness.'}
-
-SPECIFIC FEEDBACK: ${!hasEvidence ? 'Start by adding at least 2-3 concrete examples or pieces of evidence. ' : ''}${!hasEmpathy ? 'Connect your points to real human experiences and consequences. ' : ''}${!hasCounterargument ? 'Address potential objections to show you understand the complexity of the issue. ' : ''}${argumentLength < 200 ? 'Expand your argument with more depth and detail.' : 'Continue developing your analytical skills and evidence integration.'}
-
-STRENGTHS:
-${argumentLength > 300 ? '- Comprehensive treatment of the topic' : '- Clear communication of your main point'}
-${hasEvidence ? '- Inclusion of supporting evidence or examples' : '- Demonstrates basic understanding of the issue'}
-${hasEmpathy ? '- Awareness of human impact and consequences' : '- Engagement with the ethical dimensions'}
-
-AREAS FOR GROWTH:
-${!hasEvidence ? '- Add more concrete evidence, data, or specific examples' : '- Cite more authoritative sources and expert testimony'}
-${!hasStructure ? '- Use clearer organizational structure and transitions' : '- Develop more nuanced sub-arguments'}
-${!hasCounterargument ? '- Address and refute potential counterarguments' : '- Engage with more complex aspects of the issue'}`;
-
-    // Return detailed fallback with 200 status
-    res.status(200).json({
-      verdict: detailedFallback,
+    res.json({
+      verdict: "Fallback evaluation used due to AI error.",
       score: fallbackScore,
       usingFallback: true
     });
@@ -268,7 +201,10 @@ ${!hasCounterargument ? '- Address and refute potential counterarguments' : '- E
 ======================= */
 app.get("/test-gemini", async (_req, res) => {
   try {
-    const text = await safeGenerate("gemini-2.5-flash-lite", "Write one short sentence about justice.");
+    const text = await safeGenerate(
+      "gemini-2.5-flash-lite",
+      "Write one short sentence about justice."
+    );
     res.send(text);
   } catch {
     res.status(500).send("Gemini unavailable");
@@ -276,6 +212,11 @@ app.get("/test-gemini", async (_req, res) => {
 });
 
 /* =======================
-   START SERVER
+   START SERVER (RENDER SAFE)
 ======================= */
-app.listen(3000, () => console.log("✅ Server running on http://localhost:3000"));
+const PORT = process.env.PORT || 3000;
+app.listen(PORT, () =>
+  console.log(`✅ Server running on port ${PORT}`)
+);
+
+
