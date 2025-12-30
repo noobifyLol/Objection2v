@@ -16,21 +16,32 @@ const FALLBACK_CASES = {
 };
 
 // API Functions
-const API_BASE = process.env.REACT_APP_API_URL || '';
+const API_BASE = process.env.REACT_APP_API_URL || 'http://localhost:3002';
 
 async function post(path: string, body: any): Promise<any> {
-  const res = await fetch(`${API_BASE}${path}`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(body)
-  });
+  console.log(`📤 Calling API: ${API_BASE}${path}`);
+  console.log(`📦 Request body:`, body);
+  
+  try {
+    const res = await fetch(`${API_BASE}${path}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body)
+    });
 
-  if (!res.ok) {
-    const text = await res.text();
-    throw new Error(text || 'Request failed');
+    if (!res.ok) {
+      const text = await res.text();
+      console.error(`❌ API Error: ${res.status} - ${text}`);
+      throw new Error(text || 'Request failed');
+    }
+
+    const data = await res.json();
+    console.log(`✅ API Response:`, data);
+    return data;
+  } catch (error) {
+    console.error(`❌ Fetch Error:`, error);
+    throw error;
   }
-
-  return res.json();
 }
 
 function generateCase(currentRound: number, lessonType: string): Promise<any> {

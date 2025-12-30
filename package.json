@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "proxy": "http://localhost:3000",
+  "proxy": "http://localhost:3001",
   "dependencies": {
     "@google/generative-ai": "^0.24.1",
     "@testing-library/jest-dom": "^5.16.5",
