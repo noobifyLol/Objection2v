@@ -1,7 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
 import { Scale, Clock, Gavel, Sparkles, Wand2, Trophy, Zap, Star, Disc } from 'lucide-react';
-import './App.css';
-import { playSound } from "./sound";
 
 const FALLBACK_CASES = {
   rapid: [
@@ -16,27 +14,44 @@ const FALLBACK_CASES = {
   ]
 };
 
-const CASE_GENERATION_PROMPT = (currentRound: number, lessonType: string) => `Generate a unique debate case scenario for a debate practice program.
+// API Functions
+const API_BASE = process.env.REACT_APP_API_URL || '';
 
-Round Information:
-- Current Round: ${currentRound} of 3
-- Lesson Type: ${lessonType === 'rapid' ? 'Rapid Rush (2 min per case, MUST be SHORT)' : 'Normal Pace (4 min per case)'}
+async function post(path : String, body : any) {
+  const res = await fetch(`${API_BASE}${path}`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body)
+  });
 
-Rules:
-- Use a new, distinct client or subject name that has not appeared previously.
-- Match the difficulty level:
-  • Round 1 → moderately challenging issue
-  • Round 2 → complex issue with nuance
-  • Round 3 → highly difficult systemic issue
-- The scenario must be completely different from previous cases.
-${lessonType === 'rapid' ? 'CRITICAL: For Rapid mode, the prompt MUST be between 15-35 words ONLY.' : ''}
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(text || 'Request failed');
+  }
 
-Case Requirements:
-- Start with "Your client..." or "The scenario..."
-- For rapid mode: 1-2 sentences (15-35 words). For normal: 2-4 sentences.
-- Clearly describe the core issue and why it matters.
-- Debate-worthy and realistic.
-Return ONLY the final case description text (no lists or extra formatting).`;
+  return res.json();
+}
+
+function generateCase( currentRound: number, lessonType : string) {
+  return post('/api/generate-prompt', {
+    currentRound,
+    lessonType
+  });
+}
+
+function judgeArgument(prompt : String, argument : String) {
+  return post('/api/judge-argument', {
+    prompt,
+    argument
+  });
+}
+
+// Sound utility
+const playSound = (src : any) => {
+  const audio = new Audio(src);
+  audio.volume = 0.3;
+  audio.play().catch(() => {});
+};
 
 interface ToastContent {
   type: string;
@@ -80,87 +95,54 @@ export default function App() {
   }, [started]);
 
   const handleSubmitArgument = useCallback(async () => {
-    new Audio("audio/button_click.ogg").play().catch(err => console.log('Audio play failed:', err));
+    playSound("audio/button_click.ogg");
     setGameState('judging');
 
     const submittedArgument = argument && argument.trim() ? argument : '[NO ARGUMENT SUBMITTED]';
-    if (!argument.trim()) showToast('info', 'Auto-submitted', 'Time expired — submitting an empty argument.');
+
+    if (!argument.trim()) {
+      showToast('info', 'Auto-submitted', 'Time expired — submitting an empty argument.');
+    }
 
     try {
-      const resp = await fetch('/api/judge-argument', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ prompt, argument: submittedArgument })
-      });
+      const data = await judgeArgument(prompt, submittedArgument);
 
-      if (!resp.ok) {
-        const errBody = await resp.json().catch(() => ({}));
-        throw new Error((errBody as any)?.message || `Judge endpoint returned ${resp.status}`);
-      }
-
-      const data = await resp.json();
-      const judgeText = (data.verdict || String(data)).trim();
-
-      let verdictText = '';
-      let feedback = '';
-      let score = 75;
-
-      const scoreMatch = judgeText.match(/SCORE:\s*(\d+)/i);
-      const verdictMatch = judgeText.match(/VERDICT:\s*([^\n]+(?:\n[^\n]+)*?)(?=\nFEEDBACK:|$)/i);
-      const feedbackMatch = judgeText.match(/FEEDBACK:\s*([\s\S]*?)$/i);
-
-      if (scoreMatch) score = parseInt(scoreMatch[1]);
-      if (verdictMatch) verdictText = verdictMatch[1].trim();
-      if (feedbackMatch) feedback = feedbackMatch[1].trim();
-
-      const fullResponse = `${verdictText}\n\n${feedback}`;
+      const score = data.score ?? 75;
+      const verdictText = data.verdict ?? 'No feedback returned.';
 
       if (score >= 80) {
         setShowConfetti(true);
         setTimeout(() => setShowConfetti(false), 3000);
       }
 
-      setVerdict(fullResponse);
+      setVerdict(verdictText);
       setScores(prev => [...prev, score]);
       setTotalScore(prev => prev + score);
       setGameState('results');
 
-      const feedbackType = score >= 85 ? 'success' : score >= 70 ? 'info' : 'warning';
-      const feedbackTitle = score >= 85 ? '⭐ Excellent Defense!' : score >= 70 ? '💪 Solid Argument' : '📚 Keep Learning';
-      const feedbackMsg = score >= 85 ? 'Your defense strongly advocates for justice!' : 
-                          score >= 70 ? 'Good reasoning, but consider adding more specific examples.' :
-                          'Focus on concrete evidence and empathy for your client.';
+      showToast(
+        score >= 85 ? 'success' : score >= 70 ? 'info' : 'warning',
+        score >= 85 ? '⭐ Excellent Defense!' : score >= 70 ? '💪 Solid Argument' : '📚 Keep Learning',
+        score >= 85
+          ? 'Your defense strongly advocates for justice!'
+          : score >= 70
+          ? 'Good reasoning, but add more examples.'
+          : 'Try using clearer evidence and empathy.'
+      );
 
-      showToast(feedbackType, feedbackTitle, feedbackMsg);
+    } catch (err) {
+      console.error(err);
 
-    } catch (error) {
-      console.error('❌ JUDGE ERROR:', error);
-      const argumentLength = submittedArgument.length;
-      const hasEvidence = /example|evidence|study|research|data|statistic/i.test(submittedArgument);
-      const hasEmpathy = /perspective|impact|affect|feel|experience|harm|benefit/i.test(submittedArgument);
-      
-      let score = 50;
-      if (argumentLength > 200) score += 15;
-      if (argumentLength > 400) score += 10;
-      if (hasEvidence) score += 15;
-      if (hasEmpathy) score += 10;
-      
-      const verdictText = argumentLength < 100 
-        ? "Your argument is brief but shows initial reasoning. More development would strengthen your case."
-        : "Your argument demonstrates understanding of the issue and presents a coherent position.";
-      
-      const feedback = hasEvidence 
-        ? "You included supporting evidence, which strengthens your argument. Consider adding more specific examples and addressing potential counterarguments."
-        : "To improve, include concrete examples, cite specific evidence, and demonstrate deeper empathy for affected parties.";
-      
-      const fullResponse = `${verdictText}\n\n${feedback}`;
-      
-      setVerdict(fullResponse);
-      setScores(prev => [...prev, score]);
-      setTotalScore(prev => prev + score);
+      const basicScore = Math.min(100, submittedArgument.length / 5);
+
+      setVerdict(
+        "AI judging unavailable.\n\nYour argument was evaluated using a basic scoring system."
+      );
+      setScores(prev => [...prev, basicScore]);
+      setTotalScore(prev => prev + basicScore);
       setGameState('results');
-      
-      showToast('info', 'Basic scoring', 'AI judging unavailable, using basic scoring algorithm.');
+
+      showToast('info', 'Basic scoring', 'AI judge unavailable.');
     }
   }, [argument, prompt]);
 
@@ -189,9 +171,7 @@ export default function App() {
   }, [gameState]);
 
   const startLesson1 = () => {
-    const clickSound = new Audio("audio/button_click.ogg");
-    clickSound.volume = 0.3; 
-    clickSound.play().catch(err => console.log('Audio play failed:', err));
+    playSound("audio/button_click.ogg");
     setLessonType('normal');
     setFadeClass("fade-out");
     setTimeout(() => {
@@ -201,9 +181,7 @@ export default function App() {
   };
 
   const startLesson2 = () => {
-    const clickSound = new Audio("audio/button_click.ogg");
-    clickSound.volume = 0.3; 
-    clickSound.play().catch(err => console.log('Audio play failed:', err));
+    playSound("audio/button_click.ogg");
     setLessonType('rapid');
     setFadeClass("fade-out");
     setTimeout(() => {
@@ -213,54 +191,40 @@ export default function App() {
   };
 
   const generateAIPrompt = async () => {
-    new Audio("audio/button_click.ogg").play().catch(err => console.log('Audio play failed:', err));
+    playSound("audio/button_click.ogg");
     setIsGenerating(true);
     setCustomPrompt('');
 
     try {
       const timerDuration = lessonType === 'rapid' ? 120 : 240;
-      const fullPrompt = CASE_GENERATION_PROMPT(currentRound, lessonType);
 
-      const resp = await fetch('/api/generate-prompt', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ prompt: fullPrompt, currentRound, lessonType })
-      });
+      const data = await generateCase(currentRound, lessonType);
+      const generatedPrompt = data.prompt?.trim();
 
-      if (!resp.ok) {
-        const errBody = await resp.json().catch(() => ({}));
-        throw new Error((errBody as any)?.message || `generate endpoint returned ${resp.status}`);
-      }
-
-      const data = await resp.json();
-      const generatedPrompt = (data.prompt || '').trim();
-
-      if (!generatedPrompt) throw new Error('Empty response from backend');
+      if (!generatedPrompt) throw new Error('Empty prompt');
 
       setPrompt(generatedPrompt);
       setGameState('playing');
       setTimeLeft(timerDuration);
       setArgument('');
-      setIsGenerating(false);
+    } catch (err) {
+      console.error(err);
 
-    } catch (error) {
-      console.error('❌ CASE GENERATION ERROR:', error);
+      const fallback = FALLBACK_CASES[lessonType as keyof typeof FALLBACK_CASES][currentRound - 1];
 
-      const caseType = lessonType === 'rapid' ? 'rapid' : 'normal';
-      const fallbackCase = FALLBACK_CASES[caseType as keyof typeof FALLBACK_CASES][currentRound - 1];
-
-      setPrompt(fallbackCase);
+      setPrompt(fallback);
       setGameState('playing');
       setTimeLeft(lessonType === 'rapid' ? 120 : 240);
       setArgument('');
-      setIsGenerating(false);
 
-      showToast('info', 'Using preset case', 'AI generation unavailable, using a preset case instead.');
+      showToast('info', 'Using preset case', 'AI unavailable, using fallback.');
+    } finally {
+      setIsGenerating(false);
     }
   };
 
   const useCustomPrompt = () => {
-    new Audio("audio/button_click.ogg").play().catch(err => console.log('Audio play failed:', err));
+    playSound("audio/button_click.ogg");
     if (!customPrompt.trim()) {
       showToast('warning', 'Input required', 'Please enter a case scenario first!');
       return;
@@ -273,7 +237,7 @@ export default function App() {
   };
 
   const nextRound = () => {
-    new Audio("audio/button_click.ogg").play().catch(err => console.log('Audio play failed:', err));
+    playSound("audio/button_click.ogg");
     if (currentRound < 3) {
       setCurrentRound(currentRound + 1);
       setGameState('input');
@@ -286,7 +250,7 @@ export default function App() {
   };
 
   const restartGame = () => {
-    new Audio("audio/button_click.ogg").play().catch(err => console.log('Audio play failed:', err));
+    playSound("audio/button_click.ogg");
     setStarted(false);
     setGameState('input');
     setCurrentRound(1);
@@ -303,7 +267,7 @@ export default function App() {
   useEffect(() => {
     if (gameState === "end") {
       playSound("audio/winner.ogg");
-      playSound("audio/congrats.ogg"); 
+      playSound("audio/congrats.ogg");
     }
   }, [gameState]);
 
@@ -325,176 +289,175 @@ export default function App() {
   const progressPercent = Math.max(0, Math.min(100, Math.round((timeLeft / timerDuration) * 100)));
 
   return (
-    <>
-      <div id="full-screen">
-        <div className="bg-orbs" aria-hidden="true">
-          <span className="orb orb-1" />
-          <span className="orb orb-2" />
-          <span className="orb orb-3" />
-          <span className="orb orb-4" />
-        </div>
-        <div className="diagonal-ribbon" aria-hidden="true" />
-        <div className="stage-spotlight" aria-hidden="true" />
-        <div className="floating-ornaments" aria-hidden="true">
-          <span className="ornament o-1" />
-          <span className="ornament o-2" />
-          <span className="ornament o-3" />
-          <span className="ornament o-4" />
-          <span className="ornament o-5" />
-        </div>
-        {!started && (
-          <main id="main-wrapper" className={fadeClass}>
-            <div id="top">
-              <Scale size={80} />
-              <h1>Objection!</h1>
-              <Gavel size={80} />
-            </div>
+    <div className="min-h-screen bg-gradient-to-br from-indigo-900 via-purple-900 to-pink-800 text-white relative overflow-hidden">
+      {/* Background Effects */}
+      <div className="absolute inset-0 opacity-30">
+        <div className="absolute top-20 left-10 w-72 h-72 bg-blue-500 rounded-full mix-blend-multiply filter blur-xl animate-pulse"></div>
+        <div className="absolute top-40 right-10 w-72 h-72 bg-purple-500 rounded-full mix-blend-multiply filter blur-xl animate-pulse delay-700"></div>
+        <div className="absolute bottom-20 left-1/2 w-72 h-72 bg-pink-500 rounded-full mix-blend-multiply filter blur-xl animate-pulse delay-1000"></div>
+      </div>
 
-            <p id="description">
-              You're a rookie lawyer/ debater defending clients or your position on arguement from marginalized backgrounds.
-              Face 3 cases involving digital privacy, algorithmic bias, and social justice or any other debate Problem.
-            </p>
-            <div id="start-buttonwrapper">
-              <button id="start-btn" onClick={() => {
-                const audio = new Audio("/audio/button_click.mp4");
-                audio.volume = 0.4;
-                audio.play();
-                startLesson1();
-              }}>
-                <div style={{ display: "flex", alignItems: "center", gap: "10px", textAlign: "center", justifyContent: "center" }}>
-                  Normal Pace <span style={{ fontSize: "18px" }}>(4 min per case)</span>
-                </div>
-              </button>
-              <button id="start-btn" onClick={() => {
-                const audio = new Audio("/audio/button_click.mp4");
-                audio.volume = 0.4;
-                audio.play();
-                startLesson2();
-              }}>
-                <div style={{ display: "flex", alignItems: "center", gap: "10px", textAlign: "center", justifyContent: "center" }}>
-                  <Disc size={24} />
-                  <span>Rapid Rush </span>
-                  <span style={{ fontSize: "14px" }}>(2 min per case)</span>
-                </div>
-              </button>
-            </div>
-          </main>
-        )}
+      {!started && (
+        <main className={`relative z-10 flex flex-col items-center justify-center min-h-screen p-8 transition-opacity duration-700 ${fadeClass === 'fade-out' ? 'opacity-0' : 'opacity-100'}`}>
+          <div className="text-center mb-12 flex items-center gap-6">
+            <Scale size={80} className="animate-bounce" />
+            <h1 className="text-7xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-yellow-200 to-yellow-400">
+              Objection!
+            </h1>
+            <Gavel size={80} className="animate-bounce" />
+          </div>
 
-        {started && (
-          <main id="main2-wrapper">
+          <p className="text-xl text-center max-w-3xl mb-12 leading-relaxed">
+            You're a rookie lawyer/debater defending clients from marginalized backgrounds.
+            Face 3 cases involving digital privacy, algorithmic bias, and social justice or any other debate problem.
+          </p>
+
+          <div className="flex flex-col gap-6 w-full max-w-md">
+            <button
+              onClick={startLesson1}
+              className="bg-gradient-to-r from-blue-500 to-purple-600 hover:from-blue-600 hover:to-purple-700 text-white font-bold py-6 px-8 rounded-xl shadow-2xl transform transition hover:scale-105 active:scale-95"
+            >
+              <div className="flex items-center justify-center gap-3">
+                <span className="text-2xl">Normal Pace</span>
+                <span className="text-lg opacity-80">(4 min per case)</span>
+              </div>
+            </button>
+
+            <button
+              onClick={startLesson2}
+              className="bg-gradient-to-r from-pink-500 to-red-600 hover:from-pink-600 hover:to-red-700 text-white font-bold py-6 px-8 rounded-xl shadow-2xl transform transition hover:scale-105 active:scale-95"
+            >
+              <div className="flex items-center justify-center gap-3">
+                <Disc size={24} />
+                <span className="text-2xl">Rapid Rush</span>
+                <span className="text-lg opacity-80">(2 min per case)</span>
+              </div>
+            </button>
+          </div>
+        </main>
+      )}
+
+      {started && (
+        <main className="relative z-10 min-h-screen p-8">
+          <div className="max-w-4xl mx-auto">
             {gameState === 'input' && (
               <div>
-                <h2 style={{fontSize: '36px', textAlign: 'center', marginBottom: '30px'}}>
+                <h2 className="text-5xl font-bold text-center mb-12">
                   Case {currentRound} of 3
                 </h2>
-                
-                <div className="input-section">
+
+                <div className="bg-white/10 backdrop-blur-md rounded-2xl p-8 mb-8">
                   <input
                     type="text"
                     placeholder="Enter your own case scenario or generate one with AI..."
                     value={customPrompt}
                     onChange={(e) => setCustomPrompt(e.target.value)}
+                    className="w-full bg-white/20 border-2 border-white/30 rounded-xl px-6 py-4 text-white placeholder-white/60 focus:outline-none focus:border-yellow-300 text-lg"
                   />
-                  
-                  <div className="button-group">
-                    <button className="btn btn-primary" onClick={useCustomPrompt}>
+
+                  <div className="flex gap-4 mt-6">
+                    <button
+                      className="flex-1 bg-gradient-to-r from-green-500 to-emerald-600 hover:from-green-600 hover:to-emerald-700 text-white font-bold py-4 px-6 rounded-xl shadow-lg transform transition hover:scale-105 active:scale-95"
+                      onClick={useCustomPrompt}
+                    >
                       Use My Case
                     </button>
-                    <button className="btn btn-primary" onClick={generateAIPrompt} disabled={isGenerating}>
+                    <button
+                      className="flex-1 bg-gradient-to-r from-purple-500 to-indigo-600 hover:from-purple-600 hover:to-indigo-700 text-white font-bold py-4 px-6 rounded-xl shadow-lg transform transition hover:scale-105 active:scale-95 flex items-center justify-center gap-2"
+                      onClick={generateAIPrompt}
+                      disabled={isGenerating}
+                    >
                       <Wand2 size={20} />
-                      {isGenerating ? 'Generating Case...' : 'Generate AI Case'}
+                      {isGenerating ? 'Generating...' : 'Generate AI Case'}
                     </button>
                   </div>
                 </div>
 
-                <div className="info-cards-grid">
-                  <div className="info-card">
-                    <div className="card-icon">⚖️</div>
-                    <h3>Build Your Case</h3>
-                    <p>Choose to create your own scenario or let AI generate a debate topic for you.</p>
-                  </div>
-                  <div className="info-card">
-                    <div className="card-icon">💡</div>
-                    <h3>Think Strategically</h3>
-                    <p>Develop a compelling argument with evidence and empathy for your position.</p>
-                  </div>
-                  <div className="info-card">
-                    <div className="card-icon">🎯</div>
-                    <h3>Get Evaluated</h3>
-                    <p>Judge Gemini will score your defense and give constructive feedback.</p>
-                  </div>
+                <div className="grid md:grid-cols-3 gap-6">
+                  {[
+                    { icon: '⚖️', title: 'Build Your Case', desc: 'Choose to create your own scenario or let AI generate a debate topic for you.' },
+                    { icon: '💡', title: 'Think Strategically', desc: 'Develop a compelling argument with evidence and empathy for your position.' },
+                    { icon: '🎯', title: 'Get Evaluated', desc: 'Judge Gemini will score your defense and give constructive feedback.' }
+                  ].map((card, i) => (
+                    <div key={i} className="bg-white/10 backdrop-blur-md rounded-xl p-6 text-center">
+                      <div className="text-4xl mb-3">{card.icon}</div>
+                      <h3 className="text-xl font-bold mb-2">{card.title}</h3>
+                      <p className="text-sm opacity-90">{card.desc}</p>
+                    </div>
+                  ))}
                 </div>
               </div>
             )}
 
             {gameState === 'playing' && (
-              <div className="playingdiv">
-                <div style={{width: '100%'}}>
-                  <div className="round-header">
-                    <div style={{fontSize: '24px', fontWeight: 'bold'}}>Case {currentRound} of 3</div>
-                    <div className={`timer ${timeLeft < 30 ? 'warning' : ''}`}>
-                      <Clock size={32} style={{display: 'inline', marginRight: '10px'}} />
-                      {formatTime(timeLeft)}
-                    </div>
+              <div>
+                <div className="flex justify-between items-center mb-8">
+                  <div className="text-3xl font-bold">Case {currentRound} of 3</div>
+                  <div className={`flex items-center gap-3 text-3xl font-bold ${timeLeft < 30 ? 'text-red-400 animate-pulse' : ''}`}>
+                    <Clock size={32} />
+                    {formatTime(timeLeft)}
                   </div>
+                </div>
 
-                  <div className="prompt-box" style={lessonType === 'rapid' ? {fontSize: '18px', padding: '20px'} : {}}>
-                    <strong>⚖️ THE CASE:</strong><br/><br/>
-                    {prompt}
-                  </div>
+                <div className="bg-white/10 backdrop-blur-md rounded-2xl p-8 mb-6">
+                  <strong className="text-2xl">⚖️ THE CASE:</strong>
+                  <p className="mt-4 text-lg leading-relaxed">{prompt}</p>
+                </div>
 
-                  <div className="playing-extra" style={{textAlign: 'center'}}>
-                    <div className="progress-wrap">
-                      <div className="progress-bar" aria-hidden="true">
-                        <div className="progress-fill" style={{width: `${progressPercent}%`}} />
-                      </div>
-                    </div>
-                    <div style={{marginTop: 8, color: 'rgba(255,255,255,0.8)'}}>Time remaining: {formatTime(timeLeft)}</div>
-                  </div>
-
-                  <div className="input-section2">
-                    <h3 style={{fontSize: '24px', marginBottom: '15px', textAlign: 'center'}}>Your Defense Argument <span style ={{color : '#ffd43b'}}>(Take a Side on the ARGUMENT):</span></h3>
-                    <textarea
-                      value={argument}
-                      onChange={(e) => setArgument(e.target.value)}
-                      placeholder="Write your argument defending your client or position here to sway the judges. . .  "
+                <div className="mb-6">
+                  <div className="bg-white/20 rounded-full h-3 overflow-hidden">
+                    <div
+                      className="bg-gradient-to-r from-yellow-400 to-yellow-600 h-full transition-all duration-1000"
+                      style={{ width: `${progressPercent}%` }}
                     />
-                    <div style={{display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '15px', width: '85%', margin: '15px auto 0'}}>
-                      <span style={{fontSize: '16px', color: '#a0aec0'}}>{argument.length} characters</span>
-                      <button 
-                        className="btn btn-success" 
-                        onClick={handleSubmitArgument}
-                        disabled={!argument.trim()}
-                      >
-                        Submit Defense
-                      </button>
-                    </div>
                   </div>
+                  <div className="text-center mt-2 text-sm opacity-80">Time remaining: {formatTime(timeLeft)}</div>
+                </div>
 
-                  <div className="gameplay-tips">
-                    <h4 style={{marginTop: 0, fontSize: '16px', marginBottom: '12px'}}>💡 Quick Tips</h4>
-                    <ul style={{margin: 0, paddingLeft: '18px', fontSize: '13px', lineHeight: '1.6'}}>
-                      <li>Use concrete examples to support your argument</li>
-                      <li>Address counterarguments proactively</li>
-                      <li>Show empathy for affected parties</li>
-                      <li>Keep language clear and persuasive</li>
-                    </ul>
+                <div className="bg-white/10 backdrop-blur-md rounded-2xl p-8 mb-6">
+                  <h3 className="text-2xl font-bold mb-4 text-center">
+                    Your Defense Argument <span className="text-yellow-300">(Take a Side on the ARGUMENT)</span>
+                  </h3>
+                  <textarea
+                    value={argument}
+                    onChange={(e) => setArgument(e.target.value)}
+                    placeholder="Write your argument defending your client or position here to sway the judges..."
+                    className="w-full bg-white/20 border-2 border-white/30 rounded-xl px-6 py-4 text-white placeholder-white/60 focus:outline-none focus:border-yellow-300 text-lg min-h-[200px]"
+                  />
+                  <div className="flex justify-between items-center mt-4">
+                    <span className="text-sm opacity-70">{argument.length} characters</span>
+                    <button
+                      className="bg-gradient-to-r from-green-500 to-emerald-600 hover:from-green-600 hover:to-emerald-700 disabled:from-gray-500 disabled:to-gray-600 text-white font-bold py-3 px-8 rounded-xl shadow-lg transform transition hover:scale-105 active:scale-95 disabled:scale-100"
+                      onClick={handleSubmitArgument}
+                      disabled={!argument.trim()}
+                    >
+                      Submit Defense
+                    </button>
                   </div>
+                </div>
+
+                <div className="bg-white/10 backdrop-blur-md rounded-xl p-6">
+                  <h4 className="text-lg font-bold mb-3">💡 Quick Tips</h4>
+                  <ul className="space-y-2 text-sm">
+                    <li>• Use concrete examples to support your argument</li>
+                    <li>• Address counterarguments proactively</li>
+                    <li>• Show empathy for affected parties</li>
+                    <li>• Keep language clear and persuasive</li>
+                  </ul>
                 </div>
               </div>
             )}
 
             {gameState === 'judging' && (
-              <div style={{textAlign: 'center', paddingTop: '100px'}}>
-                <div style={{position: 'relative', display: 'inline-block'}}>
-                  <Gavel size={80} style={{margin: '0 auto 30px', animation: 'bounce 1s infinite', color: '#ffd43b'}} />
-                  <Sparkles size={40} style={{position: 'absolute', top: 0, right: -20, color: '#667eea', animation: 'pulse 2s infinite'}} />
+              <div className="text-center py-20">
+                <div className="relative inline-block mb-8">
+                  <Gavel size={80} className="text-yellow-300 animate-bounce" />
+                  <Sparkles size={40} className="absolute -top-2 -right-8 text-purple-300 animate-pulse" />
                 </div>
-                <h2 style={{fontSize: '36px', marginBottom: '30px'}}>⚖️ Judge Gemini is Deliberating...</h2>
-                <div className="loading">
-                  <div className="spinner"></div>
-                  <span>✨ Analyzing your defense with AI wisdom...</span>
+                <h2 className="text-5xl font-bold mb-8">⚖️ Judge Gemini is Deliberating...</h2>
+                <div className="flex flex-col items-center gap-4">
+                  <div className="w-16 h-16 border-4 border-yellow-300 border-t-transparent rounded-full animate-spin"></div>
+                  <span className="text-xl">✨ Analyzing your defense with AI wisdom...</span>
                 </div>
               </div>
             )}
@@ -502,40 +465,50 @@ export default function App() {
             {gameState === 'results' && (
               <div>
                 {showConfetti && (
-                  <div className="confetti-container">
+                  <div className="fixed inset-0 pointer-events-none z-50">
                     {[...Array(50)].map((_, i) => (
-                      <div key={i} className="confetti" style={{
-                        left: `${Math.random() * 100}%`,
-                        animationDelay: `${Math.random() * 3}s`,
-                        backgroundColor: ['#667eea', '#764ba2', '#f093fb', '#ffd43b', '#51cf66'][Math.floor(Math.random() * 5)]
-                      }}></div>
+                      <div
+                        key={i}
+                        className="absolute w-2 h-2 animate-[fall_3s_linear_infinite]"
+                        style={{
+                          left: `${Math.random() * 100}%`,
+                          animationDelay: `${Math.random() * 3}s`,
+                          backgroundColor: ['#667eea', '#764ba2', '#f093fb', '#ffd43b', '#51cf66'][Math.floor(Math.random() * 5)]
+                        }}
+                      />
                     ))}
                   </div>
                 )}
-                
-                <div style={{textAlign: 'center', marginBottom: '20px'}}>
-                  <Trophy size={60} color="#ffd43b" style={{animation: 'bounce 2s infinite'}} />
-                </div>
-                
-                <h2 style={{fontSize: '36px', textAlign: 'center', marginBottom: '30px'}}>
-                  ⚖️ Case {currentRound} Verdict
-                </h2>
-                
-                <div className="verdict-box">
-                  <div style={{fontWeight: 800, marginBottom: 10}}>Judge Gemini's Decision</div>
-                  {verdict}
+
+                <div className="text-center mb-8">
+                  <Trophy size={60} className="text-yellow-300 mx-auto animate-bounce" />
                 </div>
 
-                <div className="button-group">
+                <h2 className="text-5xl font-bold text-center mb-8">
+                  ⚖️ Case {currentRound} Verdict
+                </h2>
+
+                <div className="bg-white/10 backdrop-blur-md rounded-2xl p-8 mb-8">
+                  <div className="font-bold text-xl mb-4">Judge Gemini's Decision</div>
+                  <div className="text-lg leading-relaxed whitespace-pre-wrap">{verdict}</div>
+                </div>
+
+                <div className="flex justify-center">
                   {currentRound < 3 ? (
-                    <button className="btn btn-primary" onClick={nextRound}>
+                    <button
+                      className="bg-gradient-to-r from-blue-500 to-purple-600 hover:from-blue-600 hover:to-purple-700 text-white font-bold py-4 px-8 rounded-xl shadow-lg transform transition hover:scale-105 active:scale-95 flex items-center gap-2"
+                      onClick={nextRound}
+                    >
                       <Zap size={20} />
                       Next Case →
                     </button>
                   ) : (
-                    <button className="btn btn-success" onClick={nextRound}>
+                    <button
+                      className="bg-gradient-to-r from-green-500 to-emerald-600 hover:from-green-600 hover:to-emerald-700 text-white font-bold py-4 px-8 rounded-xl shadow-lg transform transition hover:scale-105 active:scale-95 flex items-center gap-2"
+                      onClick={nextRound}
+                    >
                       <Star size={20} />
-                      See Final Results 
+                      See Final Results
                     </button>
                   )}
                 </div>
@@ -544,98 +517,98 @@ export default function App() {
 
             {gameState === 'end' && (
               <div>
-                <div style={{textAlign: 'center', marginBottom: '30px'}}>
-                  <Trophy size={100} color="#ffd43b" style={{animation: 'bounce 2s infinite'}} />
-                  <Star size={50} style={{position: 'absolute', top: '100px', left: 'calc(50% - 80px)', color: '#667eea', animation: 'pulse 2s infinite'}} />
-                  <Star size={50} style={{position: 'absolute', top: '100px', right: 'calc(50% - 80px)', color: '#f093fb', animation: 'pulse 2s infinite 0.5s'}} />
+                <div className="text-center mb-8 relative">
+                  <Trophy size={100} className="text-yellow-300 mx-auto animate-bounce" />
+                  <Star size={50} className="absolute top-0 left-1/3 text-purple-400 animate-pulse" />
+                  <Star size={50} className="absolute top-0 right-1/3 text-pink-400 animate-pulse" style={{ animationDelay: '0.5s' }} />
                 </div>
-                
-                <h2 style={{fontSize: '48px', textAlign: 'center', marginBottom: '20px'}}>
+
+                <h2 className="text-6xl font-bold text-center mb-8">
                   🎉 Trial Complete! 🎉
                 </h2>
-                
-                <div className="final-score">
-                  {Math.round(totalScore / 3)}/100
-                </div>
-                <p style={{textAlign: 'center', fontSize: '24px', marginBottom: '40px', color: 'rgba(255,255,255,0.9)'}}>
-                  {Math.round(totalScore / 3) >= 90 ? '🏆 JUSTICE CHAMPION!' : 
-                   Math.round(totalScore / 3) >= 75 ? '⭐ RISING ADVOCATE!' :
-                   Math.round(totalScore / 3) >= 60 ? '💪 DEDICATED DEFENDER!' :
-                   '📚 LEARNING LAWYER!'}
-                </p>
 
-                <div className="score-grid">
+                <div className="text-center mb-8">
+                  <div className="text-8xl font-bold text-yellow-300 mb-4">
+                    {Math.round(totalScore / 3)}/100
+                  </div>
+                  <p className="text-3xl">
+                    {Math.round(totalScore / 3) >= 90 ? '🏆 JUSTICE CHAMPION!' :
+                     Math.round(totalScore / 3) >= 75 ? '⭐ RISING ADVOCATE!' :
+                     Math.round(totalScore / 3) >= 60 ? '💪 DEDICATED DEFENDER!' :
+                     '📚 LEARNING LAWYER!'}
+                  </p>
+                </div>
+
+                <div className="grid md:grid-cols-3 gap-6 mb-8">
                   {scores.map((score, i) => (
-                    <div key={i} className="score-card">
-                      <div className="label">Case {i + 1}</div>
-                      <div className="value">{score}</div>
-                      <div style={{fontSize: '14px', marginTop: '10px'}}>
+                    <div key={i} className="bg-white/10 backdrop-blur-md rounded-xl p-6 text-center">
+                      <div className="text-sm opacity-70 mb-2">Case {i + 1}</div>
+                      <div className="text-5xl font-bold mb-2">{score}</div>
+                      <div className="text-2xl">
                         {score >= 90 ? '🌟' : score >= 75 ? '✨' : score >= 60 ? '💫' : '⭐'}
                       </div>
                     </div>
                   ))}
                 </div>
 
-                <div className="button-group">
-                  <button className="btn btn-primary" onClick={restartGame}>
+                <div className="flex justify-center">
+                  <button
+                    className="bg-gradient-to-r from-purple-500 to-indigo-600 hover:from-purple-600 hover:to-indigo-700 text-white font-bold py-4 px-8 rounded-xl shadow-lg transform transition hover:scale-105 active:scale-95 flex items-center gap-2"
+                    onClick={restartGame}
+                  >
                     <Sparkles size={20} />
                     New Trial
                   </button>
                 </div>
               </div>
             )}
-          </main>
-        )}
+          </div>
+        </main>
+      )}
 
-        <button className="info-button" onClick={openTutorialModal}>
-          i
-        </button>
+      <button
+        onClick={openTutorialModal}
+        className="fixed bottom-8 right-8 w-12 h-12 bg-white/20 backdrop-blur-md hover:bg-white/30 rounded-full flex items-center justify-center text-2xl font-bold shadow-lg transition z-50"
+      >
+        i
+      </button>
 
-        {showTutorial && (
-          <div className="tutorial-modal">
-            <div className="tutorial-card" onClick={(e) => e.stopPropagation()}>
-              <h3>⚖️ How to Defend Justice</h3>
-              <p>Welcome, Rookie Lawyer/Debater! You'll handle three cases involving tech injustice or any debate topic, such as national identity or social issues.</p>
-              <ul>
-                <li><strong>Generate a case</strong> about digital privacy, algorithmic bias, online harassment, or tech access, or any other debate topic</li>
-                <li><strong>Build your defense</strong> with empathy, evidence, and legal reasoning (2 min per case)</li>
-                <li><strong>Get feedback</strong> from Judge Gemini on how to strengthen your advocacy</li>
-              </ul>
-              <p><strong>Tips:</strong> Cite specific examples, address systemic issues, and always center your client's perspective!</p>
-              <div className="tutorial-actions">
-                <button className="btn btn-primary" onClick={closeTutorialModal}>Ready to Defend!</button>
-              </div>
+      {showTutorial && (
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4 z-50" onClick={closeTutorialModal}>
+          <div className="bg-white/10 backdrop-blur-md rounded-2xl p-8 max-w-2xl w-full" onClick={(e) => e.stopPropagation()}>
+            <h3 className="text-3xl font-bold mb-4">⚖️ How to Defend Justice</h3>
+            <p className="mb-4 text-lg">Welcome, Rookie Lawyer/Debater! You'll handle three cases involving tech injustice or any debate topic, such as national identity or social issues.</p>
+            <ul className="space-y-3 mb-6 text-lg">
+              <li><strong>Generate a case</strong> about digital privacy, algorithmic bias, online harassment, or tech access, or any other debate topic</li>
+              <li><strong>Build your defense</strong> with empathy, evidence, and legal reasoning (2 min per case)</li>
+              <li><strong>Get feedback</strong> from Judge Gemini on how to strengthen your advocacy</li>
+            </ul>
+            <p className="mb-6 text-lg"><strong>Tips:</strong> Cite specific examples, address systemic issues, and always center your client's perspective!</p>
+            <div className="flex justify-center">
+              <button
+                className="bg-gradient-to-r from-green-500 to-emerald-600 hover:from-green-600 hover:to-emerald-700 text-white font-bold py-3 px-8 rounded-xl shadow-lg transform transition hover:scale-105 active:scale-95"
+                onClick={closeTutorialModal}
+              >
+                Ready to Defend!
+              </button>
             </div>
           </div>
-        )}
+        </div>
+      )}
 
-        {toast.open && (
-          <div style={{
-            position: 'fixed',
-            top: '20px',
-            right: '20px',
-            background: toast.content?.type === 'success' ? '#51cf66' : toast.content?.type === 'warning' ? '#ffd43b' : '#5b82f7',
-            color: 'white',
-            padding: '20px',
-            borderRadius: '12px',
-            boxShadow: '0 4px 12px rgba(0,0,0,0.3)',
-            zIndex: 1000,
-            maxWidth: '300px'
-          }}>
-            <div style={{fontWeight: 'bold', marginBottom: '5px'}}>{toast.content?.title}</div>
-            <div>{toast.content?.message}</div>
-            <button onClick={() => setToast({ open: false, content: null })} style={{
-              marginTop: '10px',
-              background: 'rgba(255,255,255,0.2)',
-              border: 'none',
-              color: 'white',
-              padding: '5px 10px',
-              borderRadius: '6px',
-              cursor: 'pointer'
-            }}>Close</button>
-          </div>
-        )}
-      </div>
-    </>
+      {toast.open && (
+        <div className="fixed top-8 right-8 bg-white/10 backdrop-blur-md text-white p-6 rounded-xl shadow-2xl z-50 max-w-sm">
+          <div className="font-bold text-lg mb-2">{toast.content?.title}</div>
+          <div className="mb-4">{toast.content?.message}</div>
+          <button
+            onClick={() => setToast({ open: false, content: null })}
+            className="bg-white/20 hover:bg-white/30 px-4 py-2 rounded-lg transition"
+          >
+            Close
+          </button>
+        </div>
+      )}
+
+    </div>
   );
 }

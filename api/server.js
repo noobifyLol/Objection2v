@@ -1,16 +1,12 @@
-// server.js
 import express from "express";
 import cors from "cors";
 import dotenv from "dotenv";
-import path from "path";
-import { fileURLToPath } from "url";
 import { GoogleGenerativeAI } from "@google/generative-ai";
-import { fileURLToPath } from "url";
-import path from "path";
+
 dotenv.config();
 
 /* =======================
-   PATH FIX FOR ES MODULES
+   PATH FIX
 ======================= */
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -23,41 +19,20 @@ app.use(cors());
 app.use(express.json());
 
 /* =======================
-   ENV + API SETUP
+   GEMINI SETUP
 ======================= */
 const apiKey = process.env.GEMINI_API_KEY;
-
-if (!apiKey) {
-  console.warn("⚠️ GEMINI_API_KEY missing — Gemini routes will fail");
-}
-
 const genAI = apiKey ? new GoogleGenerativeAI(apiKey) : null;
 
-/* =======================
-   SAFE RESPONSE READER
-======================= */
-function extractText(result) {
-  try {
-    const textFn = result?.response?.text;
-    return typeof textFn === "function" ? textFn().trim() : "";
-  } catch {
-    return "";
-  }
-}
+async function generate(model, prompt) {
+  if (!genAI) throw new Error("NO_API_KEY");
+  const result = await genAI
+    .getGenerativeModel({ model })
+    .generateContent(prompt);
 
-/* =======================
-   SAFE GENERATE
-======================= */
-async function safeGenerate(modelName, prompt) {
-  if (!genAI) throw new Error("GEMINI_NOT_CONFIGURED");
-
-  const model = genAI.getGenerativeModel({ model: modelName });
-  const result = await model.generateContent(prompt);
-
-  const text = extractText(result);
-  if (!text) throw new Error("EMPTY_OR_BLOCKED_RESPONSE");
-
-  return text;
+  const text = result?.response?.text?.();
+  if (!text) throw new Error("EMPTY_RESPONSE");
+  return text.trim();
 }
 
 /* =======================
@@ -101,16 +76,12 @@ Case Requirements:
 - Return ONLY the final case description.
 `;
 
-    const text = await safeGenerate("gemini-2.5-flash-lite", prompt);
+    const text = await generate("gemini-2.5-flash-lite", prompt);
     res.json({ prompt: text });
 
   } catch (err) {
-    console.error("Generate error:", err.message);
     res.status(500).json({
-      error: true,
-      fallback: {
-        prompt: "Your client is accused of mishandling confidential information at work..."
-      }
+      prompt: "Your client faces discrimination caused by automated decision-making."
     });
   }
 });
@@ -119,60 +90,49 @@ Case Requirements:
    JUDGE ARGUMENT
 ======================= */
 app.post("/api/judge-argument", async (req, res) => {
-  const { prompt, argument } = req.body;
-
-  if (!prompt || !argument) {
-    return res.status(400).json({ error: "Missing input" });
-  }
-
   try {
-    const judgePrompt = `
-You are Judge Gemini, an expert debate evaluator.
+    const { prompt, argument } = req.body;
 
-CASE:
-${prompt}
+    const judgePrompt =  `You are Judge Gemini presiding over a case involving social justice and marginalized communities.
 
-ARGUMENT:
+CASE: ${prompt}
+
+ROOKIE LAWYER'S DEFENSE ARGUMENT:
 ${argument}
 
-Return a score (0-100) and structured feedback.
-`;
+As a judge committed to equity and justice, evaluate this defense argument carefully.
 
-    const verdictRaw = await safeGenerate("gemini-2.5-flash-lite", judgePrompt);
-    const scoreMatch = verdictRaw.match(/SCORE:\s*(\d+)/i);
-    const score = scoreMatch ? parseInt(scoreMatch[1]) : 75;
+Consider:
+1. Does the argument show empathy and understanding of marginalized perspectives?
+2. Are there concrete examples or evidence cited?
+3. Is the legal reasoning sound and persuasive?
+4. Does it address systemic issues or just surface-level concerns?
+5. If the prompt and arguenment is not about underrepresented communities or Tech-related just grade how you want to grade it grade it like a debate club agruement. 
+Provide your evaluation in this EXACT format:
 
-    res.json({ verdict: verdictRaw, score });
+SCORE: [number from 0-100]
+VERDICT: [In 2-3 sentences, explain your ruling on whether this defense would succeed]
+FEEDBACK: [In 2-3 sentences, give constructive advice on how to strengthen this argument for defending marginalized clients]
 
-  } catch (err) {
-    console.error("Judge error:", err.message);
+Be encouraging but honest. This is a learning experience for a rookie lawyer.`;
 
-    const fallbackScore = Math.min(100, Math.max(60, argument.length / 5));
+    const verdict = await generate("gemini-2.5-flash-lite", judgePrompt);
+
+    const scoreMatch = verdict.match(/Score:\s*(\d+)/i);
+    const score = scoreMatch ? Number(scoreMatch[1]) : 75;
+
+    res.json({ verdict, score });
+
+  } catch {
     res.json({
-      verdict: "Fallback evaluation used due to AI error.",
-      score: fallbackScore,
-      usingFallback: true
+      verdict: "Fallback scoring used.",
+      score: Math.min(100, argument.length / 5)
     });
   }
 });
 
 /* =======================
-   HEALTH CHECK
-======================= */
-app.get("/test-gemini", async (_req, res) => {
-  try {
-    const text = await safeGenerate(
-      "gemini-2.5-flash-lite",
-      "Write one short sentence about justice."
-    );
-    res.send(text);
-  } catch {
-    res.status(500).send("Gemini unavailable");
-  }
-});
-
-/* =======================
-   SERVE REACT BUILD (CRA)
+   STATIC FRONTEND
 ======================= */
 app.use(express.static(path.join(__dirname, "build")));
 
@@ -181,9 +141,8 @@ app.get("/*", (_req, res) => {
 });
 
 /* =======================
-   START SERVER (RENDER SAFE)
+   START SERVER
 ======================= */
 const PORT = process.env.PORT || 3000;
-app.listen(PORT, () =>
-  console.log(`✅ Server running on port ${PORT}`)
-);
+app.listen(PORT, () => console.log("✅ Backend running"));
+
