@@ -16,7 +16,7 @@ const FALLBACK_CASES = {
 };
 
 // API Functions
-const API_BASE = process.env.REACT_APP_API_URL || 'http://localhost:3002';
+const API_BASE = 'http://localhost:3002'; // Hardcoded for now
 
 async function post(path: string, body: any): Promise<any> {
   console.log(`📤 Calling API: ${API_BASE}${path}`);
